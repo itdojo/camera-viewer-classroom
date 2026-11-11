@@ -1,0 +1,38 @@
+# Install once per clone (README, Development):
+#   uv run pre-commit install --hook-type pre-commit --hook-type commit-msg
+# Run everything by hand, as CI does:
+#   uv run pre-commit run --all-files
+#
+# Every hook is local and runs a tool from the dev dependency group through uv, so versions
+# come from uv.lock and there is no second set of pins to keep in step.
+default_install_hook_types: [pre-commit, commit-msg]
+
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff (lint)
+        entry: uv run --frozen ruff check --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+
+      - id: deptry
+        name: deptry (undeclared and unused dependencies)
+        entry: uv run --frozen deptry backend
+        language: system
+        files: ^(pyproject\.toml|uv\.lock|backend/.*\.py)$
+        pass_filenames: false
+
+      - id: node-check
+        name: node --check (frontend modules)
+        # node --check takes one file per run; report every broken module, not just the first.
+        entry: sh -c 'status=0; for f in "$@"; do node --check "$f" || status=1; done; exit $status' --
+        language: system
+        files: ^frontend/js/.*\.js$
+
+      - id: commit-msg-comments
+        name: commit message has no leftover git comments
+        entry: uv run --frozen python scripts/check-commit-msg.py
+        language: system
+        stages: [commit-msg]

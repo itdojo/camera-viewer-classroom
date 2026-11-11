@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The same uv and Python as the instance image (Dockerfile).
+  UV_VERSION: "0.11.21"
+  PYTHON_VERSION: "3.13"
+
+jobs:
+  checks:
+    name: Hooks and fast tests (no Docker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+
+      # `node --check` parses the frontend's ES modules without a package.json only on Node 22.7+.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: "24"
+
+      - run: uv sync --frozen
+
+      - name: pre-commit (ruff, deptry, node --check)
+        run: uv run --frozen pre-commit run --all-files
+
+      # Every test that needs no Docker daemon (tests/conftest.py marks the rest `docker`).
+      # The compose-rendering tests among them need only the docker CLI, which the runner has.
+      - name: Fast tests
+        run: uv run --frozen pytest -m "not docker"
+
+  full:
+    name: Full suite (Docker, Playwright Chromium)
+    runs-on: ubuntu-latest
+    # The suite takes 35-48 min, and Chromium's apt dependencies once took 13 min from a slow
+    # Azure Ubuntu mirror (31 kB/s, PR #97's runs), which pushed two runs past 60 before they
+    # finished. Both had already failed a test, so the cancel hid a failure, not a pass.
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+
+      - run: uv sync --frozen
+
+      - name: Install Chromium
+        run: uv run --frozen playwright install --with-deps chromium
+
+      # Docker Hub rate-limits anonymous pulls per IP, and hosted runners share IPs (runs
+      # 37993896745 and 37994625969 failed on 429s). Every Docker Hub image the suite uses is
+      # pulled from Google's mirror and tagged with its Docker Hub name, so neither the build
+      # nor compose pulls it again. The daemon also points at the mirror, for anything missed.
+      - name: Pull Docker Hub images from mirror.gcr.io
+        run: |
+          config=/etc/docker/daemon.json
+          current=$(sudo cat "$config" 2>/dev/null || echo '{}')
+          echo "$current" | jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' | sudo tee "$config"
+          sudo systemctl restart docker
+          for image in bluenviron/mediamtx:1.21.2 bluenviron/mediamtx:1.21.2-ffmpeg python:3.13-slim; do
+            source="mirror.gcr.io/$image"
+            [[ $image == */* ]] || source="mirror.gcr.io/library/$image"
+            for attempt in 1 2 3; do
+              docker pull -q "$source" && break
+              [[ $attempt == 3 ]] && exit 1
+              sleep $((attempt * 10))
+            done
+            docker tag "$source" "$image"
+          done
+
+      - run: docker version && docker compose version
+
+      # As the runner user, not root: device-kit/gen-cert.sh refuses root, and the
+      # harness runs each instance container as the invoking user, so the files it
+      # writes into the bind-mounted config/ and captures/ stay readable here.
+      - name: Full suite
+        run: uv run --frozen --no-sync pytest

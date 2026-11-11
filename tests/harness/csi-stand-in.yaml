@@ -1,0 +1,44 @@
+# TEST STAND-IN for a Pi CSI camera Device. Not part of the Device Kit and
+# never for students: tests/harness/devices.py layers it on
+# device-kit/csi/compose.yaml (variant "csi-stand-in") when no camera module
+# is at hand.
+#
+# Everything else is the CSI kit as a student runs it: its compose file, its
+# mediamtx.yml (authentication, RTSPS strict, HTTPS API, every other server
+# off) and its Camera path `csi`. Only two things change:
+#
+# - the image is MediaMTX's -ffmpeg build, which runs on any Docker host,
+#   instead of the arm-only -rpi build;
+# - the `csi` path is fed by an ffmpeg test pattern publishing over loopback,
+#   instead of the rpiCamera source. The encode matches what the kit boots the
+#   Pi at, Quality Medium: 1920x1080, 15 fps, H.264 at 1.5 Mbit/s, an IDR every
+#   15 frames, no B-frames. `testsrc2` rather than `testsrc`, which compresses
+#   to about half the bitrate and so understates what the Relay carries. Its
+#   path reads to the instance as an ffmpeg kit, so its Quality is never changed.
+#
+# MediaMTX takes these overrides from the environment, so the kit's
+# mediamtx.yml is mounted unchanged. Entry 0 of authInternalUsers is the
+# loopback-only user the kit already carries for this purpose; here it may
+# publish `csi`.
+#
+# What this proves is the instance side of a CSI-shaped 1080p Feed. It says
+# nothing about rpiCamera on a Pi 4 or 5, or about the Pi 5's software
+# encoder keeping up.
+
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:1.21.2-ffmpeg
+    labels:
+      io.itdojo.camera-viewer.stand-in: csi
+    environment:
+      MTX_AUTHINTERNALUSERS_0_PERMISSIONS_0_ACTION: publish
+      MTX_AUTHINTERNALUSERS_0_PERMISSIONS_0_PATH: csi
+      MTX_PATHS_CSI_SOURCE: publisher
+      MTX_PATHS_CSI_RUNONINITRESTART: "yes"
+      MTX_PATHS_CSI_RUNONINIT: >-
+        ffmpeg -hide_banner -loglevel warning -re
+        -f lavfi -i testsrc2=size=1920x1080:rate=15
+        -c:v libx264 -preset ultrafast -tune zerolatency -bf 0
+        -pix_fmt yuv420p -g 15 -keyint_min 15 -sc_threshold 0
+        -b:v 1500k -maxrate 1500k -bufsize 750k
+        -f rtsp -rtsp_transport tcp rtsps://127.0.0.1:8322/csi

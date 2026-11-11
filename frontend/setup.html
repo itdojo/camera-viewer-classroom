@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Set up a Device · Camera Viewer</title>
+<script>
+  // Follow the system theme; the ITdojo tokens switch on data-theme.
+  (function () {
+    var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+    function apply() { document.documentElement.setAttribute('data-theme', dark && dark.matches ? 'dark' : 'light'); }
+    apply();
+    if (dark && dark.addEventListener) dark.addEventListener('change', apply);
+  })();
+</script>
+<link rel="stylesheet" href="css/fonts.css">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/app.css">
+<script type="module" src="js/setup.js"></script>
+</head>
+<body>
+<header class="masthead">
+  <p class="eyebrow">⛩ IT Dojo</p>
+  <h1>Camera Viewer</h1>
+</header>
+
+<!-- The Device setup guide (#100). Commands marked data-sync must appear in
+     README.md exactly as written (tests/test_setup_guide_sync.py), so change
+     the README's Device Kit section first, then this page. Elements with
+     data-variant show only for the variants they list (js/setup.js). -->
+<main class="guide">
+  <h2>Set up a Device</h2>
+  <p class="guide-lead">These steps take a Raspberry Pi from a blank SD card to a Camera playing in this Camera Viewer. Run the commands in a terminal on your own computer and over SSH on the Pi; keep this page open beside the Add Device Panel.</p>
+
+  <div class="variant-switch" role="group" aria-label="Camera" data-variant-switch>
+    <button type="button" class="variant-switch-option" data-choose="usb" aria-pressed="true">USB webcam</button>
+    <button type="button" class="variant-switch-option" data-choose="csi" aria-pressed="false">Pi camera module</button>
+    <button type="button" class="variant-switch-option" data-choose="test-pattern" aria-pressed="false">No camera</button>
+  </div>
+  <p class="hint" data-variant="test-pattern" hidden>The test pattern needs no camera and makes a known-good Feed, so it is the quickest way to check the steps before any hardware is involved.</p>
+
+  <ol class="guide-steps">
+    <li>
+      <h3>Flash the OS</h3>
+      <p>Write Raspberry Pi OS (64-bit) to the SD card with <a href="https://www.raspberrypi.com/documentation/computers/getting-started.html#raspberry-pi-imager" target="_blank" rel="noopener">Raspberry Pi Imager</a>. In its settings, set a hostname, a username and password, and turn on SSH, because every later step reaches the Pi by that hostname and user.</p>
+      <p class="hint" data-variant="test-pattern" hidden>Not on a Pi? Any 64-bit Linux machine runs the test pattern; skip to step 2.</p>
+    </li>
+
+    <li>
+      <h3>Install Docker</h3>
+      <p>On the Pi, install Docker Engine with its Compose plugin by <a href="https://docs.docker.com/engine/install/debian/" target="_blank" rel="noopener">Docker's instructions for Debian</a>, then follow its <a href="https://docs.docker.com/engine/install/linux-postinstall/" target="_blank" rel="noopener">post-install steps</a> so your user can run Docker without <code>sudo</code>. The kit runs entirely in containers, so Docker is all it adds to the OS. Check it answers:</p>
+      <pre class="guide-shell"><code data-sync>docker compose version</code></pre>
+    </li>
+
+    <li>
+      <h3>Copy the kit to the Pi</h3>
+      <p><a class="btn btn-primary" href="device-kit.tar.gz" download>Download the Device Kit</a></p>
+      <p>This instance serves the kit it was built with, so the two always match. From your computer, copy it to the Pi, log in there, and unpack it:</p>
+      <pre class="guide-shell"><code data-sync>scp ~/Downloads/device-kit.tar.gz &lt;user&gt;@&lt;device&gt;:~</code>
+<code data-sync>ssh &lt;user&gt;@&lt;device&gt;</code>
+<code data-sync>tar xzf device-kit.tar.gz</code>
+<code data-variant="usb">cd device-kit/usb</code><code data-variant="csi" hidden>cd device-kit/csi</code><code data-variant="test-pattern" hidden>cd device-kit/test-pattern</code></pre>
+      <p class="hint">If your browser unpacked the download into a <code>device-kit</code> folder, copy the folder instead: <code data-sync>scp -r ~/Downloads/device-kit &lt;user&gt;@&lt;device&gt;:~</code></p>
+      <p class="hint">The kit carries these steps too, for reading on the Pi: <code>cat ~/device-kit/README.md</code></p>
+    </li>
+
+    <li>
+      <h3>Attach the camera and GPS receiver</h3>
+      <p>Plug the GPS receiver into a USB port now, so step 6 finds it. A Device without one still works; it just shows no Position on the map.</p>
+      <p data-variant="test-pattern" hidden>There is no camera to attach: the test pattern draws its own picture.</p>
+      <div data-variant="usb">
+        <p>Plug the webcam in now, before anything looks for it. With more than one webcam attached, list them, since you name one in step 6:</p>
+        <pre class="guide-shell"><code data-sync>ls /dev/v4l/by-id/</code></pre>
+        <p class="hint">Each webcam is the name ending in <code>-video-index0</code>; an <code>-index1</code> line beside it belongs to the same webcam.</p>
+      </div>
+      <div data-variant="csi" hidden>
+        <p class="callout callout-warn"><strong>Power the Pi off first.</strong> Connect the module's ribbon only while the Pi is off; it finds the camera as it boots.</p>
+        <p>Boot the Pi and check that it lists the camera. The kit's camera support finds it the same way:</p>
+        <pre class="guide-shell"><code data-sync>rpicam-hello --list-cameras</code></pre>
+      </div>
+    </li>
+
+    <li>
+      <h3>Check the clock</h3>
+      <p class="callout callout-warn"><strong>A wrong clock fails quietly.</strong> A Device whose clock is more than an hour off adds without complaint, but its Feeds never start.</p>
+      <pre class="guide-shell"><code data-sync>timedatectl</code></pre>
+      <p>Look for <code>System clock synchronized: yes</code>. If it says <code>no</code>, turn NTP on (it needs a time server the Pi can reach):</p>
+      <pre class="guide-shell"><code data-sync>sudo timedatectl set-ntp true</code></pre>
+      <p>With no time server in reach, set the clock by hand instead, to the time on your computer:</p>
+      <pre class="guide-shell"><code data-sync>sudo timedatectl set-ntp false</code>
+<code>sudo timedatectl set-time "&lt;YYYY-MM-DD HH:MM:SS&gt;"</code></pre>
+    </li>
+
+    <li>
+      <h3>Make the Device's certificate</h3>
+      <p>In the kit folder, run <code>gen-cert.sh</code>. It makes the Device's own certificate and password, finds the camera and GPS receiver, and prints what it made.</p>
+      <pre class="guide-shell"><code data-sync>../gen-cert.sh</code></pre>
+      <div class="callout callout-warn">
+        <p><strong>Copy the lines under the green banner before you go on.</strong> They hold the password and fingerprint, and steps 8 and 9 need both. Paste them somewhere you can read beside this page. In your terminal they look like this, with your own values:</p>
+        <pre class="guide-shell guide-output"><samp><span class="out-pass">   ⛩ DEVICE CERTIFICATE READY ⛩</span>
+<span class="out-info">▌ INFO</span>   Fingerprint:    <var>&lt;64 characters, 0–9 and a–f&gt;</var>
+<span class="out-info">▌ INFO</span>   Instance user:  viewer
+<span class="out-info">▌ INFO</span>   Password:       <var>&lt;32 characters, 0–9 and a–f&gt;</var>
+<span class="out-info">▌ INFO</span>   GNSS receiver:  /dev/serial/by-id/<var>&lt;your receiver&gt;</var></samp></pre>
+        <p>No <code>GNSS receiver</code> line means it found none: check the receiver is plugged in and run <code>../gen-cert.sh</code> again. Scrolled past it all? Running it again prints the same values and changes nothing.</p>
+      </div>
+      <p class="hint" data-variant="usb">With two webcams attached it won't guess: add <code>--camera &lt;name&gt;</code>, with one of the <code>-video-index0</code> names from step 4.</p>
+      <p class="hint" data-variant="csi" hidden>Run it on the Pi itself, because it also lists this Pi's camera devices for the container.</p>
+    </li>
+
+    <li>
+      <h3>Start the Device</h3>
+      <p>If <code>gen-cert.sh</code> printed a <code>GNSS receiver</code> line, start the Device with the <code>gps</code> profile, which runs the container that reads the receiver:</p>
+      <pre class="guide-shell"><code data-sync>docker compose --profile gps up -d</code></pre>
+      <p>With no receiver, leave the profile out:</p>
+      <pre class="guide-shell"><code data-sync>docker compose up -d</code></pre>
+      <p>The first start downloads the kit's images, which takes a few minutes. After that the Device starts by itself whenever the Pi boots.</p>
+      <p class="hint">Stop a GPS Device with the profile too, because a plain <code>down</code> leaves the receiver's container running: <code data-sync>docker compose --profile gps down</code></p>
+    </li>
+
+    <li>
+      <h3>Add it in Camera Viewer</h3>
+      <p>In the Add Device Panel, enter the Pi's address (its hostname with <code>.local</code>, or its IP address), a label (lowercase letters, digits and hyphens, such as <code>cam-2</code>), the username <code>viewer</code> and the password <code>gen-cert.sh</code> printed. Choose <strong>Check fingerprint</strong>.</p>
+    </li>
+
+    <li>
+      <h3>Compare the fingerprint</h3>
+      <p class="callout callout-stop"><strong>Never confirm a fingerprint that doesn't match.</strong> A mismatch means the address reached some other machine, so stop and find out why.</p>
+      <p>The fingerprint is how this Camera Viewer knows it is talking to your Device and nothing else. Compare the one the panel shows with the one <code>gen-cert.sh</code> printed, every character; the panel only adds a colon between pairs. If they match, confirm it.</p>
+      <p class="hint">Lost the output? Run <code>../gen-cert.sh</code> again in the same folder. It keeps the certificate and password and prints them again.</p>
+    </li>
+
+    <li>
+      <h3>Watch the Feed</h3>
+      <p>The Device's Camera now appears under Cameras. Tick <strong>Connect</strong> to put it on screen; it plays within a few seconds. If it shows Down, see the table below.</p>
+    </li>
+  </ol>
+
+  <h2>When you need more</h2>
+
+  <details class="guide-more">
+    <summary>Add a GPS receiver later</summary>
+    <p>Plug the receiver in and run <code>../gen-cert.sh</code> again so it finds the receiver, then start the Device with the <code>gps</code> profile as in step 7. It keeps the same certificate and password, so there is nothing new to confirm in Camera Viewer.</p>
+    <pre class="guide-shell"><code data-sync>docker compose --profile gps up -d</code></pre>
+  </details>
+
+  <details class="guide-more" data-variant="usb csi">
+    <summary>Flip the picture</summary>
+    <div data-variant="usb">
+      <p>The kit folder's <code>.env</code> has a commented-out <code>USB_CAMERA_FILTER</code> line (add one if it's missing). Uncomment it and set it to <code>hflip</code> (left to right), <code>vflip</code> (top to bottom) or <code>hflip,vflip</code> (180°), then start the Device again as in step 7.</p>
+    </div>
+    <div data-variant="csi" hidden>
+      <p>The kit folder's <code>.env</code> has <code>CAMERA_HFLIP=true</code> (left to right) and <code>CAMERA_VFLIP=true</code> (top to bottom) commented out (add them if they're missing). Uncomment one, or both for 180°, then start the Device again as in step 7.</p>
+    </div>
+  </details>
+
+  <details class="guide-more">
+    <summary>Add a camera that isn't from the kit</summary>
+    <p>A camera with its own RTSP stream, or a Device whose API can't be reached, goes in by URL under <strong>Add via RTSP</strong> in the Add Device Panel. A plain <code>rtsp://</code> URL is unencrypted from the camera to this Camera Viewer, and the Camera is marked Unencrypted.</p>
+  </details>
+
+  <h2 id="troubleshooting">Troubleshooting</h2>
+  <div class="guide-table">
+    <table aria-labelledby="troubleshooting">
+      <thead><tr><th scope="col">What you see</th><th scope="col">Why</th><th scope="col">Fix</th></tr></thead>
+      <tbody>
+        <tr><td>Feed shows Down, "Device clock wrong"</td><td data-label="Why">The Pi's clock is more than an hour off.</td><td data-label="Fix">Fix it as in step 5. The Feed recovers within about 10 seconds.</td></tr>
+        <tr><td>The fingerprint doesn't match</td><td data-label="Why">The address reached a different machine, or this Device's certificate was made again.</td><td data-label="Fix">Check the address is your Pi's. Run <code>../gen-cert.sh</code> to see its fingerprint. Never confirm a mismatch.</td></tr>
+        <tr><td>Add Device can't reach the Device</td><td data-label="Why">A wrong address, the Device not started, or a network that blocks it.</td><td data-label="Fix">On the Pi, <code>docker compose ps</code> should list it running. Try its IP address instead of <code>.local</code>. Ports 8322 and 9997 must be reachable from this Camera Viewer.</td></tr>
+        <tr><td>"certificate changed" after a rebuild</td><td data-label="Why">A rebuilt Device has a new certificate.</td><td data-label="Fix">Compare the new fingerprint with what <code>gen-cert.sh</code> printed and trust it. If the rebuild changed its Cameras, remove the Device and add it again.</td></tr>
+        <tr><td>Camera module shows Down, and <code>docker compose logs</code> repeats <code>camera_create()</code></td><td data-label="Why">The ribbon is missing or badly seated.</td><td data-label="Fix">Power off, reseat the ribbon, and start the Device again.</td></tr>
+        <tr><td><code>docker compose up</code> says a <code>/dev</code> path does not exist</td><td data-label="Why">The Pi's camera devices changed, after a kernel update for instance.</td><td data-label="Fix">Run <code>../gen-cert.sh</code> again, then start the Device.</td></tr>
+        <tr><td>No Position, and <code>docker compose --profile gps logs gps</code> says <code>Device or resource busy</code></td><td data-label="Why">Something else on the Pi holds the receiver, usually gpsd, which keeps it to itself.</td><td data-label="Fix">Stop gpsd and keep it from starting at boot: <code data-sync>sudo systemctl disable --now gpsd.socket gpsd.service</code> If gpsd runs in a container instead, <code>docker ps</code> lists it; stop that one. Then start the Device as in step 7.</td></tr>
+        <tr><td><code>permission denied</code> on <code>docker.sock</code></td><td data-label="Why">Your user isn't in the <code>docker</code> group yet.</td><td data-label="Fix">Follow Docker's post-install steps from step 2, then log out and back in.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="hint guide-foot">Maintainers: this guide follows the README's Device Kit section, which is the full reference.</p>
+</main>
+</body>
+</html>

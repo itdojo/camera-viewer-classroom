@@ -1,0 +1,24 @@
+# Camera Viewer on macOS (Docker Desktop) — an overlay on compose.yaml.
+#
+# Docker Desktop runs containers in a VM, so Linux host networking cannot put
+# WebRTC media on the Mac's own address. Instead the instance publishes the UI
+# and the WebRTC media port, and the Relay advertises the Mac's address to
+# browsers. Set that address once, in .env next to compose.yaml:
+#
+#   CV_HOST_IP=192.168.1.20      # the Mac's LAN (or WireGuard) address
+#   COMPOSE_FILE=compose.yaml:compose.macos.yaml
+#
+# With COMPOSE_FILE set, plain `docker compose up -d --build`, `logs` and
+# `down` use both files. See README.md, "Deploy on macOS".
+
+services:
+  camera-viewer:
+    network_mode: !reset null
+    ports:
+      - "${CV_HTTP_PORT:-8080}:${CV_HTTP_PORT:-8080}/tcp"
+      # 1:1, because the Relay puts its own port in its ICE candidates.
+      - "${CV_WEBRTC_UDP_PORT:-8189}:${CV_WEBRTC_UDP_PORT:-8189}/udp"
+    environment:
+      MTX_WEBRTCADDITIONALHOSTS: ${CV_HOST_IP:?set CV_HOST_IP (this Mac's address, as browsers reach it) in .env next to compose.yaml}
+      # The instance's own UI certificate names it too (ADR 0014).
+      CV_HOST_IP: ${CV_HOST_IP}

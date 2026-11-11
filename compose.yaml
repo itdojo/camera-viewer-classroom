@@ -1,0 +1,45 @@
+# Camera Viewer — one instance per team. See README.md for the full guide.
+#
+#   Linux:  docker compose up -d --build
+#   macOS:  add compose.macos.yaml (README, "Deploy on macOS")
+#
+# Then open https://<this host>:8080, accept the instance's own certificate once
+# (check its fingerprint against `docker compose logs`), and log in with the
+# team's password. README.md, "HTTPS and the UI certificate".
+#
+# Every setting lives in a .env file next to this one (never committed) and
+# reaches the instance as an environment variable. The only required one is
+# the shared password:
+#
+#   CV_PASSWORD=<the team's password>
+#
+# Linux host networking, because WebRTC media must reach the browser on the
+# host's real address (ADR 0002). The Relay's API and WHEP signalling bind to
+# 127.0.0.1 inside it, so only the UI port (8080/tcp, CV_HTTP_PORT) and the
+# WebRTC media port (8189/udp, CV_WEBRTC_UDP_PORT) face the network.
+#
+# Bind mounts, never named volumes: Captures and the config (Devices,
+# Cameras, credentials, the UI certificate) live in host folders next
+# to this file.
+#
+# ./config/devices.json holds every Device's credentials in PLAIN TEXT. The
+# instance keeps it mode 0600 (owner only), but anyone with root on this host,
+# or a copy of the folder, can read them. Back it up and share it accordingly.
+
+services:
+  camera-viewer:
+    build: .
+    image: camera-viewer:latest
+    network_mode: host
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      TZ: ${TZ:-UTC}
+      CV_PASSWORD: ${CV_PASSWORD:?set CV_PASSWORD (the team's password) in .env next to compose.yaml}
+      # The Relay advertises this port in its ICE candidates; keep it 1:1 wherever it is published.
+      MTX_WEBRTCLOCALUDPADDRESS: ":${CV_WEBRTC_UDP_PORT:-8189}"
+    volumes:
+      - ./captures:/captures
+      - ./config:/config

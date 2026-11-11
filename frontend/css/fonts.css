@@ -1,0 +1,63 @@
+/* The ITdojo Design System's typefaces, bundled and served by the instance so
+   the UI looks right on a station with no internet (#63). tokens.css names
+   the families; this file only says where they come from.
+
+   Fira Sans 4.301 (web), from the foundry's own repository:
+     https://github.com/bBoxType/FiraSans, Fira_Sans_4_3/Fonts/Fira_Sans_WEB_4301/Normal
+   Fira Code 6.2, the variable font from the author's release:
+     https://github.com/tonsky/FiraCode/releases/tag/6.2, woff2/FiraCode-VF.woff2
+   Both are under the SIL Open Font License 1.1; each folder in ../fonts/
+   carries its OFL.txt. Files are renamed to kebab-case and otherwise as
+   published.
+
+   The login page uses this file too, so it and every font below are listed
+   in auth.PUBLIC. */
+
+@font-face {
+  font-family: 'Fira Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/fira-sans/fira-sans-regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: 'Fira Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../fonts/fira-sans/fira-sans-medium.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: 'Fira Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../fonts/fira-sans/fira-sans-bold.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: 'Fira Sans';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/fira-sans/fira-sans-italic.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: 'Fira Sans';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../fonts/fira-sans/fira-sans-bold-italic.woff2") format("woff2");
+}
+
+/* One variable font covers every weight the UI asks for (400, 500, 700). */
+@font-face {
+  font-family: 'Fira Code';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url("../fonts/fira-code/fira-code-variable.woff2") format("woff2");
+}

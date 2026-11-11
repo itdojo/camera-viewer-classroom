@@ -1,0 +1,25 @@
+.DS_Store
+.env
+*.log
+
+# Python / uv
+__pycache__/
+.venv/
+.pytest_cache/
+
+# Generated Device secrets: certificates, keys and credentials never get committed
+certs/
+*.key
+*.crt
+*.pem
+
+# Generated per Device by gen-cert.sh: the CSI kit's camera device list
+/device-kit/*/compose.override.yaml
+
+# Instance bind mounts: Captures and the config store (Device credentials)
+/captures/
+/config/
+.claude/worktrees/
+
+# Review tools' reports: findings land as issues, fixes and working notes, not as files
+/.autoreview/

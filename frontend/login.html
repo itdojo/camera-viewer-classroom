@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Log in · Camera Viewer</title>
+<script>
+  // Follow the system theme; the ITdojo tokens switch on data-theme.
+  (function () {
+    var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+    function apply() { document.documentElement.setAttribute('data-theme', dark && dark.matches ? 'dark' : 'light'); }
+    apply();
+    if (dark && dark.addEventListener) dark.addEventListener('change', apply);
+  })();
+</script>
+<link rel="stylesheet" href="css/fonts.css">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/app.css">
+<script type="module" src="js/login.js"></script>
+</head>
+<body>
+<header class="masthead">
+  <p class="eyebrow">⛩ IT Dojo</p>
+  <h1>Camera Viewer</h1>
+</header>
+
+<main class="login">
+  <form class="form login-card" id="login" aria-labelledby="login-heading">
+    <h2 id="login-heading">Log in</h2>
+    <p class="hint">Enter your team's password to watch and record its Cameras.</p>
+    <label>Password <input name="password" type="password" required autocomplete="current-password" autofocus></label>
+    <p class="form-error" role="alert" data-error></p>
+    <button type="submit" class="btn btn-primary" data-submit>Log in</button>
+  </form>
+</main>
+</body>
+</html>

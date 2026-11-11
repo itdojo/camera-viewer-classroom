@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Camera Viewer</title>
+<script>
+  // Follow the system theme; the ITdojo tokens switch on data-theme.
+  (function () {
+    var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+    function apply() { document.documentElement.setAttribute('data-theme', dark && dark.matches ? 'dark' : 'light'); }
+    apply();
+    if (dark && dark.addEventListener) dark.addEventListener('change', apply);
+  })();
+</script>
+<link rel="stylesheet" href="css/fonts.css">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/app.css">
+<script type="module" src="js/main.js"></script>
+</head>
+<body>
+<header class="masthead">
+  <!-- Alert badges sit beside their control, never inside it, so the
+       control's name stays exact; aria-describedby carries the count. -->
+  <span class="bar-toggle-wrap">
+    <button type="button" class="btn btn-ghost bar-toggle" data-bar-toggle aria-label="Management Bar"
+            aria-expanded="false" aria-controls="management-bar" aria-keyshortcuts="\" title="\"><span aria-hidden="true">☰</span></button>
+    <span class="alert-count" id="bar-alert-count" data-alert-count hidden></span>
+  </span>
+  <p class="eyebrow">⛩ IT Dojo</p>
+  <h1>Camera Viewer</h1>
+  <div class="view-switch" role="group" aria-label="View" data-view-switch>
+    <button type="button" class="view-switch-option" data-view="multi" aria-pressed="true">Multi View</button>
+    <button type="button" class="view-switch-option" data-view="map" aria-pressed="false">Map View</button>
+  </div>
+  <section class="disk" aria-label="Captures disk" data-disk hidden>
+    <span class="disk-bar" aria-hidden="true"><span data-disk-used></span></span>
+    <span class="disk-text" data-disk-text></span>
+    <p class="disk-alert" role="status" data-disk-alert></p>
+  </section>
+  <button type="button" class="btn btn-quiet log-out" data-log-out>Log out</button>
+</header>
+
+<div class="layout">
+  <aside class="management-bar" id="management-bar" aria-label="Management Bar">
+    <!-- Panels: data-panel is each Panel's stable id, which the saved
+         collapse state and order key on, so never rename one. -->
+    <section class="panel" data-panel="cameras" aria-labelledby="cameras-heading">
+      <header class="panel-header">
+        <button type="button" class="panel-grip" aria-label="Move Cameras" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+                title="Drag, or press Alt+↑/↓, to move Cameras"><span aria-hidden="true">⠿</span></button>
+        <h2 id="cameras-heading"><button type="button" class="panel-toggle" aria-expanded="true" aria-controls="cameras-body">Cameras</button></h2>
+      </header>
+      <div class="panel-body" id="cameras-body">
+        <ul class="camera-list" aria-label="Cameras"></ul>
+        <p class="empty" data-empty>No Cameras yet. Add a Device to discover its Cameras, or build one with the <a href="setup.html" target="_blank" rel="noopener">Device Setup Guide</a>.</p>
+      </div>
+    </section>
+
+    <section class="panel captures" data-panel="captures" aria-labelledby="captures-heading">
+      <header class="panel-header">
+        <button type="button" class="panel-grip" aria-label="Move Captures" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+                title="Drag, or press Alt+↑/↓, to move Captures"><span aria-hidden="true">⠿</span></button>
+        <h2 id="captures-heading"><button type="button" class="panel-toggle" aria-expanded="true" aria-controls="captures-body">Captures</button></h2>
+      </header>
+      <div class="panel-body" id="captures-body">
+        <ul class="capture-list" aria-label="Captures"></ul>
+        <p class="empty" data-empty>No Captures yet. Recordings and Snapshots land here and in the host's captures folder.</p>
+      </div>
+    </section>
+
+    <section class="panel" data-panel="devices" aria-labelledby="devices-heading">
+      <header class="panel-header">
+        <button type="button" class="panel-grip" aria-label="Move Devices" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+                title="Drag, or press Alt+↑/↓, to move Devices"><span aria-hidden="true">⠿</span></button>
+        <h2 id="devices-heading"><button type="button" class="panel-toggle" aria-expanded="true" aria-controls="devices-body">Devices</button></h2>
+        <span class="alert-count" id="devices-alert-count" data-alert-count hidden></span>
+      </header>
+      <div class="panel-body" id="devices-body">
+        <div class="certificate-alerts" data-certificate-alerts></div>
+        <ul class="device-list" aria-label="Devices"></ul>
+        <p class="form-error" role="alert" data-device-error></p>
+      </div>
+    </section>
+
+    <section class="panel" data-panel="add-device" aria-labelledby="add-device-heading">
+      <header class="panel-header">
+        <button type="button" class="panel-grip" aria-label="Move Add Device" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+                title="Drag, or press Alt+↑/↓, to move Add Device"><span aria-hidden="true">⠿</span></button>
+        <h2 id="add-device-heading"><button type="button" class="panel-toggle" aria-expanded="true" aria-controls="add-device-body">Add Device</button></h2>
+      </header>
+      <div class="panel-body" id="add-device-body">
+        <p class="hint"><a href="setup.html" target="_blank" rel="noopener">Device Setup Guide</a></p>
+        <form class="form" id="add-device" aria-labelledby="add-device-heading" autocomplete="off">
+          <label>Address <input name="address" required placeholder="192.0.2.40 or cam-2.local"></label>
+          <label>Label <input name="label" required placeholder="cam2" pattern="[a-z0-9]+(-[a-z0-9]+)*" maxlength="40"
+                              title="kebab-case: lowercase letters, digits and single hyphens, e.g. cam-2"></label>
+          <label>Username <input name="username" required value="viewer"></label>
+          <label>Password <input name="password" required type="password"></label>
+
+          <div class="fingerprint" data-fingerprint hidden>
+            <p class="eyebrow">Certificate fingerprint (SHA-256)</p>
+            <code data-fingerprint-value></code>
+            <p class="hint">Check it matches the fingerprint <code>gen-cert.sh</code> printed on the Device before you confirm.</p>
+          </div>
+          <p class="form-error" role="alert" data-error></p>
+          <p class="hint" role="status" data-note></p>
+          <button type="submit" class="btn btn-primary" data-submit>Check fingerprint</button>
+        </form>
+
+        <!-- The manual Camera form, for a Device the instance can't discover. -->
+        <h3 class="panel-subheading" id="add-camera-heading">Add via RTSP</h3>
+        <form class="form" id="add-camera" aria-labelledby="add-camera-heading" autocomplete="off">
+          <p class="hint">For a Device whose API can't be reached, or one not built from the Device Kit.</p>
+          <label>Device label <input name="device" required placeholder="cam2" pattern="[a-z0-9]+(-[a-z0-9]+)*" maxlength="40"
+                                     title="kebab-case: an existing Device's label, or a new one"></label>
+          <label>RTSP URL <input name="url" required placeholder="rtsps://viewer:password@192.0.2.40:8322/usb"></label>
+          <p class="hint hint-unencrypted" data-unencrypted hidden>Plain RTSP is unencrypted from the camera to the Relay, so anyone on that network can watch it. Use rtsps:// if the camera has it.</p>
+          <label>Camera name <input name="name" placeholder="defaults to the URL's path"></label>
+
+          <div class="fingerprint" data-fingerprint hidden>
+            <p class="eyebrow">Certificate fingerprint (SHA-256)</p>
+            <code data-fingerprint-value></code>
+            <p class="hint">Check it matches the fingerprint the Device's certificate has before you confirm.</p>
+          </div>
+          <p class="form-error" role="alert" data-error></p>
+          <button type="submit" class="btn btn-primary" data-submit>Add Camera</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- Stays after the Panels, which move above it. -->
+    <footer class="bar-foot">
+      <a href="setup.html" target="_blank" rel="noopener">Device Setup Guide</a>
+      <button type="button" class="btn btn-quiet" data-reset-layout>Reset layout</button>
+      <p class="visually-hidden" role="status" data-moved></p>
+    </footer>
+  </aside>
+
+  <main class="viewer">
+    <section class="multi-view" aria-label="Multi View">
+      <div class="multi-grid" data-grid></div>
+      <p class="empty view-empty" data-empty>Tick Cameras in the list to put them on screen here, up to nine. Click a Camera's name to watch it alone.</p>
+    </section>
+
+    <section class="map-view" aria-label="Map View" hidden>
+      <div class="map"></div>
+    </section>
+
+    <section class="single-view" aria-label="Single View" hidden>
+      <header class="view-header">
+        <button type="button" class="btn btn-ghost" data-back title="Esc">← Multi View</button>
+        <h2 data-title>Choose a Camera</h2>
+        <span class="feed-status" data-feed-status hidden></span>
+        <p class="meta" data-meta></p>
+        <span data-recording></span>
+      </header>
+      <div class="stage">
+        <video muted autoplay playsinline disablepictureinpicture></video>
+        <p class="stage-message" data-message>Pick a Camera from the list to watch its Feed.</p>
+      </div>
+    </section>
+  </main>
+</div>
+</body>
+</html>

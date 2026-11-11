@@ -1,0 +1,62 @@
+# Device Kit — USB webcam Device
+#
+# One USB webcam on a Raspberry Pi or any arm64/amd64 Linux host, published
+# as the Camera `usb`: 1280x720 at 15 fps, H.264 at 1 Mbit/s with no
+# B-frames (Quality Medium, which the instance can change). Plug the webcam
+# in first, then from this directory:
+#
+#   ../gen-cert.sh          # once: certificate in ./certs, credentials and
+#                           # the webcam's stable path in ./.env
+#   docker compose up -d    # start the Device
+#
+# gen-cert.sh prints the certificate fingerprint and the instance user's
+# credentials. Enter them in Camera Viewer when you add this Device.
+#
+# The webcam is named by its stable /dev/v4l/by-id/ path (USB_CAMERA in
+# .env), never /dev/videoN, whose numbers shift between boots and replugs.
+# gen-cert.sh fills it in when exactly one webcam is attached; with two, run
+# `../gen-cert.sh --camera /dev/v4l/by-id/<...>-video-index0`.
+#
+# Ports: 8322/tcp RTSPS (the Camera), 9997/tcp the MediaMTX API over HTTPS.
+# Nothing else is exposed: plain RTSP, RTMP, HLS and WebRTC are switched off.
+#
+# A second webcam: uncomment the `usb-2` lines here and in mediamtx.yml, and
+# set USB_CAMERA_2 in .env to its /dev/v4l/by-id/ path. Software x264 costs
+# CPU per camera; check `docker stats` on a Pi before relying on two.
+
+# GPS: `docker compose --profile gps up -d` also starts the GPS Sidecar
+# (../gps/compose.yaml), which serves a GNSS receiver's fixes on 9998/tcp.
+# Without the profile it stays off.
+include:
+  - path: ../gps/compose.yaml
+    project_directory: .
+
+services:
+  mediamtx:
+    # Pinned to exactly 1.21.2, the same MediaMTX as the Camera Viewer image.
+    # Its Alpine ffmpeg reads V4L2 (`ffmpeg -devices` lists v4l2 with D).
+    image: bluenviron/mediamtx:1.21.2-ffmpeg
+    restart: unless-stopped
+    environment:
+      MTX_AUTHINTERNALUSERS_1_USER: ${INSTANCE_USER:?run ../gen-cert.sh first, or set INSTANCE_USER in .env}
+      MTX_AUTHINTERNALUSERS_1_PASS: ${INSTANCE_PASS:?run ../gen-cert.sh first, or set INSTANCE_PASS in .env}
+      # The ffmpeg video filter applied to the webcam before encoding.
+      # `null` passes the picture through. For a webcam mounted sideways or
+      # upside down, set USB_CAMERA_FILTER in .env to hflip (mirror left to
+      # right), vflip (top to bottom) or hflip,vflip (turn 180 degrees).
+      USB_CAMERA_FILTER: ${USB_CAMERA_FILTER:-null}
+    devices:
+      # Docker resolves the by-id link when the container starts, so a
+      # renumbered /dev/videoN is picked up by the next `docker compose up`.
+      - ${USB_CAMERA:?plug in the webcam and run ../gen-cert.sh, or set USB_CAMERA in .env to its /dev/v4l/by-id/ path}:/dev/camera-usb
+      # - ${USB_CAMERA_2:?set USB_CAMERA_2 in .env}:/dev/camera-usb-2
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+      - ${DEVICE_CERTS_DIR:-./certs}:/certs:ro
+    ports:
+      # Keep 8322 published as 8322: the instance always pulls a Camera from
+      # 8322 on the Device's address. API_PORT may move if 9997 is taken (add
+      # the Device as host:port). Both take 127.0.0.1:0, an ephemeral loopback
+      # port, which only the tests use.
+      - "${RTSPS_PORT:-8322}:8322"
+      - "${API_PORT:-9997}:9997"

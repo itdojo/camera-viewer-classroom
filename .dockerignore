@@ -1,0 +1,20 @@
+.git
+.venv
+.pytest_cache
+**/__pycache__
+.claude
+tests
+docs
+config
+captures
+.env
+
+# The Device Kit goes into the image as a download (#99), but never what a
+# Device generates beside it: its credentials, certificate and key, and the
+# CSI kit's per-Pi camera list. A checkout that has run the kit holds them.
+device-kit/**/.env
+device-kit/**/certs
+device-kit/*/compose.override.yaml
+**/*.key
+**/*.crt
+**/*.pem

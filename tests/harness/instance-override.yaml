@@ -1,0 +1,41 @@
+# Test-harness overlay. Applied by tests/harness/instance.py, never by hand,
+# on top of compose.yaml plus compose.macos.yaml: every instance under test
+# runs the macOS deployment path the README documents, with CV_HOST_IP set to
+# 127.0.0.1 and CV_WEBRTC_UDP_PORT set to a port the harness picks free on the
+# host. A Feed that plays in Seam B therefore played through that path.
+#
+# What this overlay changes, only so parallel sessions share one Docker host:
+#
+# - the instance joins the session's Docker network, so it reaches Devices by
+#   label;
+# - published ports bind 127.0.0.1 only, and the UI's host port is ephemeral
+#   (WebRTC media stays 1:1, as the macOS overlay requires);
+# - bind mounts in the session's temp directory;
+# - the container runs as the invoking user, so on Linux the files it writes
+#   into those mounts belong to whoever runs pytest (Docker Desktop on macOS
+#   maps them to the host user regardless);
+# - settings come from a per-instance env file the harness writes, never from
+#   a developer's .env, so a test can start an instance tuned its own way.
+
+services:
+  camera-viewer:
+    image: ${CV_IMAGE:?}
+    user: "${CV_TEST_UID:?}:${CV_TEST_GID:?}"
+    env_file: !override
+      - ${CV_TEST_ENV_FILE:?}
+    restart: "no"
+    ports: !override
+      - "127.0.0.1::8080"
+      - "127.0.0.1:${CV_WEBRTC_UDP_PORT:?}:${CV_WEBRTC_UDP_PORT:?}/udp"
+    volumes: !override
+      - ${CV_TEST_CAPTURES_DIR:?}:/captures
+      - ${CV_TEST_CONFIG_DIR:?}:/config
+    labels:
+      io.itdojo.camera-viewer.test-session: ${CV_TEST_SESSION:?}
+    networks:
+      session: {}
+
+networks:
+  session:
+    name: ${CV_TEST_NETWORK:?}
+    external: true

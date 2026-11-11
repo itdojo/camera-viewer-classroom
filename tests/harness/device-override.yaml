@@ -1,0 +1,26 @@
+# Test-harness overlay on a Device Kit compose file. Applied by
+# tests/harness/devices.py, never by hand.
+#
+# - No fixed host ports: each container port is published on an ephemeral
+#   loopback port, so parallel sessions on one Docker host never collide.
+# - The Device joins the session's shared network under its label as a DNS
+#   alias, so another container (a Relay, a probe) reaches it by name.
+# - A session label makes every container traceable to its test session.
+
+services:
+  mediamtx:
+    ports: !override
+      - "127.0.0.1::8322"
+      - "127.0.0.1::9997"
+    restart: "no"
+    labels:
+      io.itdojo.camera-viewer.test-session: ${CV_TEST_SESSION:?}
+    networks:
+      session:
+        aliases:
+          - ${CV_DEVICE_ALIAS:?}
+
+networks:
+  session:
+    name: ${CV_TEST_NETWORK:?}
+    external: true

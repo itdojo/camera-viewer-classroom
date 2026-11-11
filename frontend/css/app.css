@@ -1,0 +1,1564 @@
+/* Camera Viewer UI shell. Every color, size and space comes from tokens.css
+   (ITdojo Design System); nothing here hard-codes a brand value. */
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; }
+
+[hidden] { display: none !important; }
+
+/* What the browser draws itself, such as the Basemap select's option list and scrollbars, follows
+   the theme, so it stays readable in the dark one. */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+body {
+  background: var(--surface-page);
+  color: var(--text-body);
+  font-family: var(--font-text);
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
+  font-weight: var(--fw-regular);
+  transition: background var(--motion-theme), color var(--motion-theme);
+}
+
+h1, h2, h3 { color: var(--text-heading); font-weight: var(--fw-bold); margin: 0; }
+h1 { font-size: var(--fs-h1); line-height: var(--lh-h1); letter-spacing: var(--ls-h1); }
+h2 { font-size: var(--fs-h2); line-height: var(--lh-h2); }
+h3 { font-size: var(--fs-body); line-height: var(--lh-body); }
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--surface-tint-violet);
+  color: var(--violet);
+  padding: 1px 6px;
+  border-radius: var(--r-xs);
+}
+
+.eyebrow {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  font-weight: var(--fw-medium);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-caption);
+  color: var(--text-muted);
+}
+
+.meta, .hint, .empty {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--text-muted);
+}
+
+/* -- layout ----------------------------------------------------------------- */
+
+.masthead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-5);
+  border-bottom: var(--hairline);
+  background: var(--surface-raised);
+  border-top: var(--stripe) solid var(--jade);
+}
+
+.layout {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr;
+  min-height: calc(100vh - var(--masthead, 70px));
+}
+
+/* The Management Bar slides over the left edge of the viewer instead of
+   taking a column, so opening it never re-lays out the Multi View, whose
+   height cap depends on fixed chrome measurements. Closed, it is
+   visibility: hidden, which also takes it out of the accessibility tree and
+   the tab order once the slide-out ends. */
+.management-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 10;
+  width: min(340px, 100vw);
+  overflow-y: auto;
+  border-right: var(--hairline);
+  background: var(--surface-page);
+  box-shadow: var(--shadow-lg);
+  padding: var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  visibility: hidden;
+  transform: translateX(-100%);
+}
+.management-bar[data-open] { visibility: visible; transform: none; }
+/* It slides only once the page has settled (data-ready), so a bar saved open
+   is simply there on load, and never under reduced motion. Closing holds
+   visibility until the slide ends: `visibility 0s var(--motion-fast)` is a
+   0s change delayed by the token's duration. */
+@media (prefers-reduced-motion: no-preference) {
+  .management-bar[data-ready] { transition: transform var(--motion-fast), visibility 0s var(--motion-fast); }
+  .management-bar[data-ready][data-open] { transition: transform var(--motion-fast); }
+}
+
+.bar-toggle-wrap { position: relative; align-self: center; display: inline-flex; }
+.bar-toggle { padding: var(--sp-1) var(--sp-2); line-height: 1; }
+
+/* Certificate-alert count: a wine pill, like the alert's own stripe. It sits
+   beside its control rather than in it (see management-bar.js); on the
+   toggle it overlaps the top-right corner. */
+.alert-count {
+  flex: none;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: var(--r-pill);
+  background: var(--danger);
+  color: var(--text-on-danger);
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-bold);
+  line-height: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.bar-toggle-wrap .alert-count { position: absolute; top: -6px; right: -8px; pointer-events: none; }
+
+/* Reset layout sits at the foot of the bar, below however many Panels. */
+.bar-foot {
+  margin-top: auto;
+  padding-top: var(--sp-4);
+  border-top: var(--hairline);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2) var(--sp-4);
+}
+.bar-foot a { font-size: var(--fs-small); }
+
+/* Read by screen readers, never seen: badge words, the Panel-moved announcement. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.panel, .panel-body { display: flex; flex-direction: column; gap: var(--sp-3); }
+
+/* A Panel's header: the grip (dragged to reorder) and the heading, whose
+   whole width is the button that collapses and expands the Panel. */
+.panel-header { display: flex; align-items: center; gap: var(--sp-2); }
+.panel-header h2 { flex: 1; min-width: 0; }
+.panel-grip, .item-grip {
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-body);
+  line-height: 1;
+  cursor: grab;
+  user-select: none;
+  touch-action: none; /* a finger on the grip drags the Panel, not the page */
+}
+.panel-grip:focus-visible, .item-grip:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.panel[data-dragging], .camera-list li[data-dragging], .device-list li[data-dragging] { opacity: 0.6; }
+.panel[data-dragging] .panel-grip, li[data-dragging] .item-grip { cursor: grabbing; }
+/* Where a dragged Panel, Camera or Device would land: a jade line just above
+   or below the one it would sit beside. A shadow, so nothing re-lays out
+   mid-drag. */
+.panel[data-drop="above"], .camera-list li[data-drop="above"], .device-list li[data-drop="above"] { box-shadow: 0 -6px 0 -3px var(--jade); }
+.panel[data-drop="below"], .camera-list li[data-drop="below"], .device-list li[data-drop="below"] { box-shadow: 0 6px 0 -3px var(--jade); }
+/* A second form in a Panel (Add via RTSP under Add Device). */
+.panel-subheading { margin: var(--sp-3) 0 0; padding-top: var(--sp-3); border-top: var(--hairline); }
+.panel-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.panel-toggle:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+/* The chevron is drawn with borders: generated text would join the button's
+   accessible name, and with it the heading's, the region's and the form's. */
+.panel-toggle::after {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-right: var(--sp-1);
+  border-right: 2px solid var(--text-muted);
+  border-bottom: 2px solid var(--text-muted);
+  transform: rotate(45deg);
+  transition: transform var(--motion-fast);
+}
+.panel-toggle[aria-expanded="false"]::after { transform: rotate(-45deg); }
+@media (prefers-reduced-motion: reduce) {
+  .panel-toggle::after { transition: none; }
+}
+
+.viewer { --viewer-pad: var(--sp-5); padding: var(--viewer-pad); min-width: 0; }
+
+/* The Feed stays in view while a long Camera or Device list scrolls; Chromium
+   also pauses a muted autoplaying video once it is scrolled off screen. */
+@media (min-width: 761px) {
+  .viewer { position: sticky; top: 0; align-self: start; }
+}
+
+@media (max-width: 760px) {
+  .layout { grid-template-columns: 1fr; }
+  .viewer { order: -1; }
+  /* Narrow: the bar stays stacked below the viewer and always shown. */
+  .management-bar {
+    position: static;
+    width: auto;
+    overflow: visible;
+    border-right: 0;
+    border-bottom: var(--hairline);
+    box-shadow: none;
+    padding: var(--sp-4);
+    visibility: visible;
+    transform: none;
+  }
+  .management-bar[data-ready], .management-bar[data-ready][data-open] { transition: none; }
+  .bar-toggle-wrap { display: none; }
+  .viewer { --viewer-pad: var(--sp-4); border-bottom: var(--hairline); }
+}
+
+/* -- Camera and Device lists ----------------------------------------------- */
+
+.camera-list, .device-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+
+/* A Camera and a Device are the same card: a head line (grip, name, its
+   action at the right) over muted mono detail. */
+.camera-list li, .device-list li {
+  position: relative;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-raised);
+  border: var(--hairline);
+  border-radius: var(--r-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  transition: background var(--motion-fast), border-color var(--motion-fast);
+}
+
+.camera-head { display: flex; align-items: center; gap: var(--sp-2); }
+
+/* The Camera's button holds the head line; its ::after stretches over the
+   whole card, so the detail line opens Single View too. The grip and Connect
+   sit above it. */
+.camera-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-2);
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.camera-open::after { content: ""; position: absolute; inset: -1px; border-radius: var(--r-sm); }
+.camera-open:focus-visible { outline: none; }
+.camera-open:focus-visible::after { box-shadow: var(--focus-ring); }
+.camera-list .item-grip, .camera-list .connect { position: relative; z-index: 1; }
+.camera-list li:has(.camera-open:hover) { background: var(--surface-tint-violet); }
+.camera-list li:has(.camera-open[aria-pressed="true"]) { border-color: var(--jade); background: var(--surface-tint-violet); }
+
+.camera-device { font-weight: var(--fw-bold); overflow-wrap: anywhere; }
+.camera-meta { overflow-wrap: anywhere; }
+.camera-recording { display: inline-flex; margin-left: var(--sp-2); vertical-align: middle; }
+
+/* Connect puts the Camera on screen in Multi View. A real checkbox is laid
+   invisibly over a label drawn like the Devices' Remove, so it keeps its
+   checkbox role and state; on screen, it turns jade with a filled dot. */
+.connect {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 var(--sp-2);
+  border: 1px solid currentColor;
+  border-radius: var(--r-sm);
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-small);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+.connect::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+}
+.connect .on-screen { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: inherit; }
+.connect:hover { color: var(--text-body); background: var(--surface-tint-violet); }
+.connect:has(.on-screen:checked) { color: var(--jade-text); border-color: var(--jade); background: var(--surface-tint-jade); }
+.connect:has(.on-screen:checked)::before { background: var(--jade); border-color: var(--jade); }
+.connect:has(.on-screen:focus-visible) { box-shadow: var(--focus-ring); }
+.connect:has(.on-screen:disabled) { opacity: 0.45; cursor: not-allowed; }
+.connect:has(.on-screen:disabled):hover { color: var(--text-muted); background: transparent; }
+
+.device-label { flex: 1; min-width: 0; font-weight: var(--fw-bold); }
+.device-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.device-warning { font-size: var(--fs-caption); line-height: var(--lh-caption); color: var(--warning-text); }
+
+/* A Device's Position: a disclosure whose summary shows its source and coordinates, then the Fixed Position form. */
+.fixed-position { font-size: var(--fs-caption); line-height: var(--lh-caption); }
+.fixed-position summary { cursor: pointer; color: var(--text-muted); border-radius: var(--r-xs); list-style: none; }
+.fixed-position summary::-webkit-details-marker { display: none; }
+/* The disclosure triangle, drawn so a locked field can hide it and keep its place. */
+.fixed-position summary::before {
+  content: "";
+  display: inline-block;
+  margin-right: var(--sp-2);
+  border-left: 5px solid currentColor;
+  border-block: 4px solid transparent;
+  vertical-align: 1px;
+  transition: transform var(--motion-fast);
+}
+.fixed-position[open] summary::before { transform: rotate(90deg); }
+/* A fresh 3D GPS fix is the Position: no form to open. */
+.fixed-position[data-locked] summary { cursor: default; }
+.fixed-position[data-locked] summary::before { visibility: hidden; }
+.fixed-position summary:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.fixed-position-source { margin-left: var(--sp-2); font-weight: var(--fw-medium); color: var(--text-body); }
+.fixed-position-current { margin-left: var(--sp-2); font-family: var(--font-mono); color: var(--text-body); }
+.fixed-position[data-stale] .fixed-position-current { color: var(--text-muted); }
+.fixed-position-form { gap: var(--sp-2); }  /* .form's fields, a little tighter */
+.fixed-position-form input { font-family: var(--font-mono); padding: var(--sp-1) var(--sp-2); }
+.fixed-position-actions { display: flex; gap: var(--sp-2); }
+
+/* -- certificate changed ------------------------------------------------------ */
+
+.certificate-alerts { display: flex; flex-direction: column; gap: var(--sp-3); }
+.certificate-alerts:empty { display: none; }
+
+.certificate-alert {
+  padding: var(--sp-3);
+  border-left: var(--stripe) solid var(--danger);
+  background: var(--surface-raised);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+
+.certificate-alert code { word-break: break-all; background: transparent; padding: 0; color: var(--text-body); }
+
+/* -- forms -------------------------------------------------------------------- */
+
+.form { display: flex; flex-direction: column; gap: var(--sp-3); padding-top: var(--sp-2); }
+
+.form label { display: flex; flex-direction: column; gap: var(--sp-1); font-weight: var(--fw-medium); }
+
+.form input {
+  font: inherit;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-card);
+  color: var(--text-body);
+  border: var(--border-input);
+  border-radius: var(--r-sm);
+}
+
+.form input::placeholder { color: var(--text-muted); }
+.form input:focus { outline: none; border-color: var(--jade); box-shadow: var(--focus-ring); }
+
+.fingerprint {
+  padding: var(--sp-3);
+  border-left: var(--stripe) solid var(--info);
+  background: var(--surface-tint-violet);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.fingerprint code[data-fingerprint-value] {
+  background: transparent;
+  padding: 0;
+  word-break: break-all;
+  color: var(--text-body);
+}
+
+.form-error { margin: 0; color: var(--danger); font-weight: var(--fw-medium); }
+.form-error:empty, .hint:empty { display: none; }
+.form-error::before { content: "STOP  "; font-family: var(--font-mono); font-weight: var(--fw-bold); letter-spacing: var(--ls-badge); }
+
+.btn {
+  font: inherit;
+  font-size: var(--fs-small);
+  font-weight: var(--fw-bold);
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background var(--motion-fast);
+}
+.btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.btn-primary { background: var(--action-primary); color: var(--text-on-action); }
+.btn-primary:hover { background: var(--action-primary-hover); }
+.btn-quiet { background: transparent; color: var(--text-muted); border-color: currentColor; padding: 0 var(--sp-2); font-size: var(--fs-caption); }
+.btn-quiet:hover { color: var(--text-body); background: var(--surface-tint-violet); }
+.btn-ghost { background: transparent; color: var(--text-heading); padding: var(--sp-1) var(--sp-3); }
+.btn-ghost:hover { background: var(--surface-tint-violet); }
+.btn:disabled { opacity: 0.6; cursor: progress; }
+
+/* -- Single View ---------------------------------------------------------------- */
+
+.single-view { display: flex; flex-direction: column; gap: var(--sp-4); }
+
+.view-header { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--sp-3); }
+
+/* The Device's Position in the Single View header. The details live in a tooltip on the
+   coordinates, shown on hover and on keyboard focus. A stale Position keeps its place, muted. */
+.position {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--text-body);
+}
+.position[hidden], .position-age[hidden], .position-source[hidden] { display: none; }
+.position-source { color: var(--text-muted); }
+.position[data-stale] { color: var(--text-muted); }
+.position-coordinates { border-radius: var(--r-xs); cursor: help; }
+.position-coordinates:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.position-detail {
+  position: absolute;
+  top: calc(100% + var(--sp-1));
+  left: 0;
+  z-index: 5;
+  width: max-content;
+  max-width: min(90vw, 40ch);
+  padding: var(--sp-1) var(--sp-2);
+  border: var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-md);
+  color: var(--text-body);
+  visibility: hidden;
+}
+.position-coordinates:hover + .position-detail,
+.position-coordinates:focus-visible + .position-detail { visibility: visible; }
+
+.stage {
+  position: relative;
+  background: var(--terminal-bg);
+  border-radius: var(--r-sm);
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+
+.stage video { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+.stage-message {
+  position: absolute;
+  margin: 0;
+  padding: var(--sp-2) var(--sp-4);
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  color: var(--terminal-fg);
+  background: color-mix(in srgb, var(--terminal-bg) 80%, transparent);
+  border-radius: var(--r-sm);
+}
+.stage-message:empty { display: none; }
+
+/* -- Single View map (map.js, single-view-map.js) -----------------------------------
+   Below the stage at a fixed height, so the page scrolls rather than the Feed shrinking.
+   MapLibre's own stylesheet (vendor/) draws its controls; only the marker, the grid
+   labels and the panel around the map are styled here. */
+
+.single-view-map { display: flex; flex-direction: column; gap: var(--sp-2); }
+.map-toggle { width: auto; justify-content: flex-start; }
+.map {
+  position: relative;
+  height: 320px;
+  border: var(--hairline);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  background: var(--surface-card);
+}
+
+.map-marker { width: 28px; height: 28px; display: grid; place-items: center; }
+/* A dot with a wedge pointing along the heading; with no heading, just the dot. */
+.map-marker-arrow {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--jade);
+  border: 2px solid var(--white);
+  box-shadow: var(--shadow-sm);
+}
+.map-marker[data-heading] .map-marker-arrow {
+  width: 22px;
+  height: 26px;
+  border-radius: 0;
+  border: 0;
+  clip-path: polygon(50% 0, 100% 100%, 50% 78%, 0 100%);
+}
+/* Marker states (#80). A Fixed Position is square, a fix round or an arrow. A Map View marker
+   wears the worst Feed Status of its Device's Cameras in the badge's colours (Offline hatched where
+   the badge is hollow), and every status but Live adds an upright glyph, so colour is never alone.
+   The tokens lighten in the dark theme while a street Basemap stays light, so every marker, on
+   either map, wears a dark halo (--text-on-action, the same in both themes), drawn twice so its
+   edge is solid; the dark theme's --gray-500 is under 3:1 on a light map by itself. Stale greys
+   any marker over its Feed Status and rings it with dashes, so it never reads as Idle. */
+.map-marker[data-fixed] .map-marker-arrow { border-radius: var(--r-xs); }
+.map-marker { filter: drop-shadow(0 0 1px var(--text-on-action)) drop-shadow(0 0 1px var(--text-on-action)); }
+.map-marker[data-feed-status="degraded"] .map-marker-arrow { background: var(--warning); }
+.map-marker[data-feed-status="down"] .map-marker-arrow { background: var(--danger); }
+.map-marker[data-feed-status="idle"] .map-marker-arrow { background: var(--gray-500); }
+.map-marker[data-feed-status="offline"] .map-marker-arrow {
+  background: repeating-linear-gradient(45deg, var(--gray-500) 0 3px, var(--surface-card) 3px 6px);
+}
+.map-marker[data-stale] { opacity: 0.75; border-radius: 50%; outline: 2px dashed var(--gray-500); outline-offset: -1px; }
+.map-marker[data-stale] .map-marker-arrow { background: var(--gray-500); }
+.map-marker-status { display: none; }
+.map-marker[data-feed-status]:not([data-feed-status="live"]) .map-marker-status {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  display: grid;
+  place-items: center;
+  width: var(--sp-4);
+  height: var(--sp-4);
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  background: var(--surface-card);
+  color: var(--text-muted);
+  font: var(--fw-bold) var(--fs-caption)/1 var(--font-mono);
+  rotate: calc(-1 * var(--heading, 0deg)); /* the marker turns with its heading; the glyph doesn't */
+}
+.map-marker[data-feed-status="degraded"] .map-marker-status { background: var(--warning); color: var(--text-on-action); }
+.map-marker[data-feed-status="down"] .map-marker-status { background: var(--danger); color: var(--text-on-danger); }
+.map-marker[data-feed-status="degraded"] .map-marker-status::before { content: "~"; }
+.map-marker[data-feed-status="down"] .map-marker-status::before { content: "!"; }
+.map-marker[data-feed-status="idle"] .map-marker-status::before { content: "–"; }
+.map-marker[data-feed-status="offline"] .map-marker-status::before { content: "×"; }
+
+/* Devices with no Position, listed in the map's top-left corner under the Basemap switcher. */
+.map-no-position {
+  max-width: min(40ch, calc(100% - 2 * var(--sp-5)));
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-sm);
+  background: var(--surface-card);
+  box-shadow: 0 0 0 1px var(--border-strong), var(--shadow-sm);
+  color: var(--text-body);
+  font-family: var(--font-text);
+  font-size: var(--fs-caption);
+}
+/* Each name opens the Map Preview on its Device, so it reads as a link. */
+.map-no-position-name {
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: none;
+  color: var(--text-link);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.map-no-position-name:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+.map-grid-labels { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
+/* The Basemap switcher (basemap.js), a native select in a MapLibre control box. */
+.map .maplibregl-ctrl-group:has(> .map-basemap) {
+  background: var(--surface-card);
+  box-shadow: 0 0 0 1px var(--border-strong), var(--shadow-sm); /* MapLibre's own ring vanishes on a dark card */
+}
+.map-basemap {
+  height: 29px;
+  padding: 0 var(--sp-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-body);
+  font-family: var(--font-text);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+}
+.map-basemap:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+/* The 3D buildings toggle beside it, a word like Recentre, in the action colour while on, as the
+   view switch's pressed option is. */
+.map .maplibregl-ctrl-group:has(> .map-basemap) { display: flex; }
+.map .maplibregl-ctrl-group button.map-buildings {
+  width: auto;
+  padding: 0 var(--sp-2);
+  border-top: 0;
+  border-left: 1px solid var(--border-strong);
+  font-family: var(--font-text);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  color: var(--text-body);
+}
+.map .maplibregl-ctrl-group button.map-buildings[hidden] { display: none; }
+.map .maplibregl-ctrl-group button.map-buildings[aria-pressed="true"] { background: var(--action-primary); color: var(--text-on-action); }
+.map .maplibregl-ctrl-group button.map-buildings:focus-visible { box-shadow: var(--focus-ring); }
+/* MapLibre's control buttons are icon-sized; Recentre is a word. */
+.map .maplibregl-ctrl-group button.map-recentre {
+  width: auto;
+  padding: 0 var(--sp-2);
+  font-family: var(--font-text);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  color: var(--gray-900);
+}
+.map-grid-label {
+  position: absolute;
+  padding: 0 var(--sp-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--surface-card) 80%, transparent);
+  white-space: nowrap;
+}
+.map-grid-latitude { left: 0; transform: translateY(-50%); }
+/* MapLibre's scale bar and attribution, on tokens so they read in both themes. */
+.map .maplibregl-ctrl-scale,
+.map .maplibregl-ctrl-attrib {
+  background: color-mix(in srgb, var(--surface-raised) 85%, transparent);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+}
+.map .maplibregl-ctrl-scale { border-color: var(--text-muted); }
+.map .maplibregl-ctrl-attrib a { color: var(--text-link); }
+.map-grid-longitude { top: 0; transform: translateX(-50%); }
+
+/* -- Map View (map-view.js) and the masthead switch (view-switch.js) -------------------
+   One map filling the viewing area under the masthead, never shorter than Single View's. */
+
+.map-view .map { height: max(320px, calc(100dvh - var(--masthead, 72px) - 2 * var(--viewer-pad))); }
+
+/* A marker that can be chosen (Map View's) is a button: it opens the Map Preview. */
+.map-marker[role="button"] { cursor: pointer; border-radius: 50%; }
+.map-marker[role="button"]:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* Marker Details (map.js): a card beside a Map View marker, on its right or flipped to its left,
+   upright whatever the heading, never in the way of a click. Details sit in front of every
+   marker, and the hovered or focused one in front of the rest. 22px is half a marker plus 8. */
+.map-detail { width: 0; height: 0; z-index: 1; pointer-events: none; }
+.map-detail[hidden], .map-detail-card > [hidden] { display: none; }
+.map-detail[data-front] { z-index: 2; }
+.map-detail-card {
+  position: absolute;
+  top: 0;
+  left: 22px;
+  translate: 0 -50%;
+  display: grid;
+  width: max-content;
+  max-width: 32ch;
+  padding: var(--sp-1) var(--sp-2);
+  border: var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-md);
+  color: var(--text-body);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  overflow-wrap: anywhere;
+}
+.map-detail-card[data-side="left"] { left: auto; right: 22px; }
+.map-detail-label { font-weight: var(--fw-bold); }
+.map-detail-address, .map-detail-coordinates { font-family: var(--font-mono); }
+.map-detail-note { color: var(--text-muted); }
+/* The Details toggle beside Recentre, a word like it, in the action colour while on, as 3D is. */
+.map .maplibregl-ctrl-group button.map-details {
+  width: auto;
+  padding: 0 var(--sp-2);
+  font-family: var(--font-text);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  color: var(--gray-900);
+}
+.map .maplibregl-ctrl-group button.map-details[aria-pressed="true"] { background: var(--action-primary); color: var(--text-on-action); }
+.map .maplibregl-ctrl-group button.map-details:focus-visible { box-shadow: var(--focus-ring); }
+
+/* MapLibre's corner controls move clear of a panel laid over the map (map.js's setPadding). */
+.map .maplibregl-ctrl-top-right, .map .maplibregl-ctrl-bottom-right { right: var(--map-inset-right, 0px); }
+.map .maplibregl-ctrl-bottom-left, .map .maplibregl-ctrl-bottom-right { bottom: var(--map-inset-bottom, 0px); }
+
+/* -- Map Preview (map-preview.js) ----------------------------------------------------
+   A raised panel docked on the map's right edge, beside the map in the DOM so MapLibre never
+   sees its pointer events. Below 760px it is a sheet fixed along the screen's bottom. */
+
+.map-view { position: relative; }
+.map-preview {
+  position: absolute;
+  top: var(--sp-3);
+  right: var(--sp-3);
+  z-index: 3; /* above MapLibre's controls (z-index 2) */
+  width: min(360px, calc(100% - 2 * var(--sp-3)));
+  max-height: calc(100% - 2 * var(--sp-3));
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-body);
+}
+.map-preview[hidden], .map-preview .stage[hidden], .map-preview .empty[hidden] { display: none; }
+.map-preview-header { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); }
+.map-preview-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--fs-small);
+  overflow-wrap: anywhere;
+}
+.map-preview-slot:empty { display: none; }
+.map-preview-close { margin-left: auto; padding: var(--sp-1) var(--sp-2); line-height: 1; }
+.map-preview-empty { margin: 0; }
+.map-preview-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.map-preview [data-slot]:empty { display: none; }
+/* The Device's Position, the Single View header's line, led by a fix dot as a tile's is (filled
+   jade live, hollow amber stale, blue Fixed, hollow grey none), then Copy and its "Copied". */
+.map-preview-position { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-1) var(--sp-2); }
+.map-preview-position .position { flex-wrap: wrap; align-items: center; min-width: 0; }
+.map-preview-position .position::before {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1px solid var(--text-muted);
+}
+.map-preview-position .position[data-fix="live"]::before { background: var(--success); border-color: var(--success); }
+.map-preview-position .position[data-fix="stale"]::before { border-color: var(--warning); }
+.map-preview-position .position[data-fix="fixed"]::before { background: var(--info); border-color: var(--info); }
+.map-preview-position .position[data-fix="none"] { color: var(--text-muted); }
+.map-preview-copy { padding: 0 var(--sp-2); font-size: var(--fs-caption); }
+.map-preview-copied { font-size: var(--fs-caption); color: var(--text-muted); }
+.map-preview-copied:empty { display: none; }
+.map-preview-choice-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.map-preview-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-xs);
+  background: none;
+  color: var(--text-heading);
+  font: inherit;
+  font-size: var(--fs-small);
+  font-weight: var(--fw-medium);
+  text-align: left;
+  cursor: pointer;
+}
+.map-preview-choice:hover { background: var(--surface-tint-violet); }
+.map-preview-choice:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.map-preview-choice[aria-current="true"] { border-color: var(--jade); background: var(--surface-tint-violet); }
+/* A phone: a sheet fixed along the bottom of the screen, never dragged, the video at its full
+   width; the map pads above it. The page gains room below, so the Management Bar's end can
+   still scroll clear of the sheet. */
+@media (max-width: 760px) {
+  .map-preview {
+    position: fixed;
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: auto;
+    max-height: 60dvh;
+    padding: var(--sp-3) calc(var(--sp-3) + env(safe-area-inset-right)) calc(var(--sp-3) + env(safe-area-inset-bottom)) calc(var(--sp-3) + env(safe-area-inset-left));
+    border: 0;
+    border-top: var(--hairline);
+    border-radius: var(--r-md) var(--r-md) 0 0;
+  }
+  .map-preview .stage { flex: none; }
+  body:has(.map-preview:not([hidden])) { padding-bottom: 60dvh; }
+}
+
+/* Multi View | Map View: two joined buttons, the current View's filled jade. */
+.view-switch {
+  align-self: center;
+  display: inline-flex;
+  border: var(--border-input);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+.view-switch-option {
+  padding: var(--sp-1) var(--sp-3);
+  border: 0;
+  background: transparent;
+  color: var(--text-body);
+  font: inherit;
+  font-size: var(--fs-small);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.view-switch-option + .view-switch-option { border-left: var(--border-input); }
+.view-switch-option:hover { background: var(--surface-tint-violet); }
+.view-switch-option[aria-pressed="true"] { background: var(--action-primary); color: var(--text-on-action); font-weight: var(--fw-bold); }
+.view-switch-option:focus-visible { outline: none; box-shadow: inset var(--focus-ring); }
+
+/* -- Feed Status badge ---------------------------------------------------------
+   Design-system badge: pill, mono, uppercase, 6px dot. Live is jade, Degraded
+   amber, Down danger (the label names the error); Idle and Offline are both
+   neutral, Offline with a hollow dot so "nobody is watching" never reads as
+   "the Device is gone". */
+
+.feed-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  line-height: 1;
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-badge);
+  white-space: nowrap;
+  background: var(--gray-100);
+  color: var(--gray-700);
+}
+
+.feed-status::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  box-sizing: border-box;
+  background: var(--gray-500);
+  border: 1px solid var(--gray-500);
+}
+
+.feed-status[data-feed-status="live"] { background: var(--surface-tint-jade); color: var(--jade-text); }
+.feed-status[data-feed-status="live"]::before { background: var(--jade); border-color: var(--jade); }
+
+.feed-status[data-feed-status="degraded"] { background: color-mix(in srgb, var(--warning) 18%, transparent); color: var(--warning-text); }
+.feed-status[data-feed-status="degraded"]::before { background: var(--warning); border-color: var(--warning); }
+
+.feed-status[data-feed-status="down"] { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
+.feed-status[data-feed-status="down"]::before { background: var(--danger); border-color: var(--danger); }
+
+.feed-status[data-feed-status="offline"]::before { background: transparent; }
+
+/* A reason ("certificate changed") reads as words, not as another label. */
+.feed-status-reason { text-transform: none; letter-spacing: normal; font-weight: var(--fw-medium); white-space: normal; }
+
+/* -- Multi View ------------------------------------------------------------------ */
+
+/* Columns and rows come from multi-view.js (--columns, --rows). On a phone
+   held upright the grid is as wide as the viewer and the page scrolls. On a
+   wide or landscape screen it fits the window: --fit is the height under the
+   masthead (measured by multi-view.js), the grid is never so wide that its
+   rows of 16:9 tiles plus their bars (--bar, a three-row estimate) overflow
+   it, though no tile is made narrower than 14rem (when the rows can't fit,
+   say nine Cameras on a phone on its side, the page scrolls instead). Each
+   row is at most its share of --fit (fit-content), so if the bars
+   run taller than the estimate the videos shrink and letterbox rather than
+   spill off screen. A row never shrinks below its tiles' least height (a
+   4.5rem video plus the bar as it really wraps, see .tile): past that the
+   page scrolls, so a video never collapses to nothing. */
+.multi-view { --columns: 1; --rows: 1; --bar: 88px; }
+.multi-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--columns), minmax(0, 1fr));
+  gap: var(--sp-3);
+  width: 100%;
+  margin: 0 auto;
+}
+
+@media (min-width: 761px), (orientation: landscape) {
+  .multi-view { --fit: calc(100dvh - var(--masthead, 72px) - 2 * var(--viewer-pad)); }
+  .multi-grid {
+    grid-template-rows: repeat(var(--rows), fit-content(calc((var(--fit) - (var(--rows) - 1) * var(--sp-3)) / var(--rows))));
+    width: min(100%, max(
+      calc((var(--fit) - var(--rows) * var(--bar)) / var(--rows) * 16 / 9 * var(--columns)),
+      calc(var(--columns) * 14rem + (var(--columns) - 1) * var(--sp-3))));
+  }
+  .multi-grid:empty { display: none; }
+}
+
+/* A short landscape screen (a phone on its side): a slimmer masthead leaves
+   the height to the Feeds. */
+@media (orientation: landscape) and (max-height: 540px) {
+  .masthead { padding: var(--sp-2) var(--sp-4); row-gap: var(--sp-1); }
+  .masthead h1 { font-size: var(--fs-h2); line-height: var(--lh-h2); }
+  .viewer { --viewer-pad: var(--sp-3); }
+}
+
+.view-empty { padding: var(--sp-6) 0; text-align: center; }
+
+/* Two rows: the screen at 16:9, shrinking only when the tile is shorter than
+   that plus its bar. A tile is never shorter than a 4.5rem screen plus its
+   bar as it really wraps (--bar-height, measured by tile.js), and the Multi
+   View rows honour that least height. */
+.tile {
+  position: relative;
+  container: tile / inline-size;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, auto) auto;
+  align-content: start; /* a tile taller than its content keeps the space below its bar */
+  min-height: calc(4.5rem + var(--bar-height, var(--bar)));
+  background: var(--terminal-bg);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  cursor: pointer;
+  border: 1px solid var(--terminal-rule);
+  transition: border-color var(--motion-fast);
+}
+.tile:hover { border-color: var(--jade); }
+
+/* The picture and what lies over it. The screen keeps 16:9 until the grid
+   has to shrink it; the video fills it either way. */
+.tile-screen { position: relative; min-height: 0; }
+/* The screen's natural height, 16:9 of its width; when the row is shorter the
+   screen shrinks to it and the video letterboxes. */
+.tile-screen::before { content: ""; display: block; padding-top: 56.25%; }
+.tile video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; background: var(--terminal-bg); }
+
+.tile-message {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--sp-2);
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  color: var(--terminal-fg);
+  pointer-events: none;
+}
+.tile-message:empty { display: none; }
+
+/* Three rows, each wrapping on its own so nothing is cut off on a narrow
+   tile: the Device and Camera with the badges, the Position and resolution,
+   then the controls. On a wide tile the first two share a line. */
+.tile-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-3);
+  padding: var(--sp-1) var(--sp-2) var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  color: var(--terminal-fg);
+}
+.tile-row { flex: 1 1 100%; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-1) var(--sp-2); }
+.tile-row:not(:has(> :not(:empty))) { display: none; }
+@container tile (min-width: 34rem) {
+  .tile-head { flex: 1 1 auto; }
+  .tile-info { flex: 0 1 auto; }
+}
+
+.tile-open {
+  flex: 1 1 8ch; /* the name keeps room; on a small tile the badges wrap below it */
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  padding: var(--sp-1) 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tile-open:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--r-xs); }
+.tile-device { font-weight: var(--fw-bold); color: var(--terminal-fg); }
+.tile-name { color: var(--terminal-meta); overflow: hidden; text-overflow: ellipsis; }
+
+.tile-slot { flex: none; display: inline-flex; align-items: center; gap: var(--sp-1); }
+.tile-slot:empty { display: none; }
+.tile-slot.tile-position { flex: 1 1 auto; min-width: 0; }
+.tile-slot.tile-resolution { margin-left: auto; }
+.tile-slot.tile-controls { flex: 1 1 100%; min-width: 0; flex-wrap: wrap; gap: var(--sp-1) var(--sp-2); }
+/* The Recording and Snapshot controls' parts wrap one by one across the row,
+   so a narrow tile breaks between them rather than cutting Record off. */
+.tile .record-control, .tile .snapshot-control { display: contents; }
+.tile .record-duration { min-width: 0; max-width: 100%; }
+
+/* A narrow tile: with coordinates, the fix word and the resolution share the
+   first line and the coordinates take the second, so the resolution never
+   gets a line of its own. Without them, everything simply flows. */
+@container tile (max-width: 24rem) {
+  .tile-info { position: relative; }
+  .tile-info:has(.tile-coordinates:not(:empty)) .tile-resolution { position: absolute; top: 0; right: 0; }
+  .tile-info:has(.tile-coordinates:not(:empty)) .tile-fix { max-width: calc(100% - 10ch); white-space: normal; }
+  .tile-fix::before { flex: none; }
+  .tile-coordinates { flex-basis: 100%; }
+}
+.tile-resolution { color: var(--terminal-meta); }
+
+/* A tile's Position: a fix-status dot and word, then the coordinates; muted once stale. The dot is
+   drawn with content "" so it never joins the accessible name. A new state needs only a colour. */
+.tile-position-group { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0 var(--sp-2); min-width: 0; }
+.tile-position-group > * { white-space: nowrap; }
+.tile-position-group[data-stale] { color: var(--terminal-meta); }
+.tile-fix { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--terminal-meta); }
+.tile-fix::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+}
+.tile-fix[data-fix="live"] { color: var(--terminal-pass); }
+.tile-fix[data-fix="live"]::before { background: currentColor; }
+.tile-fix[data-fix="stale"] { color: var(--terminal-warn); }
+.tile-fix[data-fix="fixed"] { color: var(--terminal-info); }
+.tile-coordinates:empty { display: none; }
+
+/* -- Login wall ------------------------------------------------------------------ */
+
+.login { display: grid; justify-items: center; padding: var(--sp-6) var(--sp-4); }
+
+.login-card {
+  width: min(100%, 360px);
+  padding: var(--sp-5);
+  background: var(--surface-raised);
+  border: var(--hairline);
+  border-top: var(--stripe) solid var(--violet);
+  border-radius: var(--r-sm);
+}
+
+.masthead .log-out { margin-left: auto; }
+
+.btn-quiet { background: transparent; color: var(--text-muted); border-color: currentColor; }
+.btn-quiet:hover { color: var(--text-body); }
+
+/* -- Recording ---------------------------------------------------------------- */
+
+/* Design-system badge: pill, mono label caption, a 6px dot. A live Recording
+   is the "active" badge with a jade dot; waiting for its Feed is a warning. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) 10px;
+  border-radius: var(--r-pill);
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-badge);
+  text-transform: uppercase;
+  line-height: var(--lh-caption);
+}
+.badge::before { content: ""; width: 6px; height: 6px; border-radius: var(--r-pill); background: currentColor; }
+
+.badge-recording { background: var(--surface-tint-violet); color: var(--text-body); }
+.badge-recording[data-state="active"]::before { background: var(--jade); }
+.badge-recording[data-state="waiting"] { background: color-mix(in srgb, var(--warning) 18%, transparent); color: var(--warning-text); }
+
+/* A Feed pulled over plain RTSP (ADR 0014): an open lock instead of the dot. */
+.badge-unencrypted { background: color-mix(in srgb, var(--warning) 18%, transparent); color: var(--warning-text); }
+.badge-unencrypted::before { content: none; }
+.hint-unencrypted { color: var(--warning-text); }
+.hint-unencrypted[hidden] { display: none; }
+
+.badge-remaining { font-variant-numeric: tabular-nums; }
+.badge-remaining::before { content: "· "; }
+
+.record-control { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.record-control[hidden], .record-duration[hidden] { display: none; }
+.view-header .record-control { margin-left: auto; align-self: center; }
+.record-duration {
+  font: inherit;
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-sm);
+  border: var(--border-input);
+  background: var(--surface-card);
+  color: var(--text-body);
+}
+.record-duration:focus { outline: none; border-color: var(--jade); box-shadow: var(--focus-ring); }
+.btn-record { background: var(--surface-card); color: var(--text-body); border: var(--border-input); }
+.btn-record:hover { background: var(--surface-tint-violet); }
+
+.camera-recording:empty { display: none; }
+
+/* On a tile the bar is the dark terminal panel in both themes, and so is Full
+   Screen's header: terminal ink. */
+.tile .badge, .full-screen .badge { padding: 0 var(--sp-2); }
+.tile .badge-recording, .full-screen .badge-recording { background: var(--terminal-sel); color: var(--terminal-fg); }
+.tile .badge-recording[data-state="active"]::before, .full-screen .badge-recording[data-state="active"]::before { background: var(--terminal-pass); }
+.tile .badge-recording[data-state="waiting"], .full-screen .badge-recording[data-state="waiting"] { background: var(--terminal-sel); color: var(--terminal-warn); }
+.tile .badge-unencrypted { background: var(--terminal-sel); color: var(--terminal-warn); }
+.tile .btn-record {
+  padding: 0 var(--sp-2);
+  font-size: var(--fs-caption);
+  background: transparent;
+  color: var(--terminal-fg);
+  border-color: var(--terminal-rule);
+}
+.tile .btn-record:hover { background: var(--terminal-sel); }
+.tile .record-duration {
+  padding: 0 var(--sp-1);
+  font-size: var(--fs-caption);
+  background: transparent;
+  color: var(--terminal-fg);
+  border-color: var(--terminal-rule);
+}
+.tile .record-duration option { color: initial; }
+
+/* Snapshot: a button and a status line that names the saved file. */
+.snapshot-control { display: inline-flex; align-items: center; gap: var(--sp-2); align-self: center; }
+.snapshot-control[hidden] { display: none; }
+.snapshot-status { font-size: var(--fs-caption); color: var(--text-muted); }
+.snapshot-status:empty { display: none; }
+.btn-snapshot { background: var(--surface-card); color: var(--text-body); border: var(--border-input); }
+.btn-snapshot:hover { background: var(--surface-tint-violet); }
+.tile .btn-snapshot {
+  padding: 0 var(--sp-2);
+  font-size: var(--fs-caption);
+  background: transparent;
+  color: var(--terminal-fg);
+  border-color: var(--terminal-rule);
+}
+.tile .btn-snapshot:hover { background: var(--terminal-sel); }
+.tile .snapshot-status { color: var(--terminal-pass); }
+
+/* -- Quality ------------------------------------------------------------------- */
+
+/* The label ("Medium · auto"), the gear and its menu. The menu opens upward
+   over the video on a tile and downward under the Single View header, inside
+   the tile's own box, so the tile's overflow never clips it. */
+.quality-control { position: relative; display: inline-flex; align-items: center; gap: var(--sp-2); align-self: center; }
+.quality-control[hidden], .quality-notice[hidden] { display: none; }
+.quality-label { font-family: var(--font-mono); font-size: var(--fs-caption); color: var(--text-muted); white-space: nowrap; }
+.quality-label:empty { display: none; }
+.quality-notice {
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  background: color-mix(in srgb, var(--warning) 18%, transparent);
+  color: var(--warning-text);
+}
+.btn-quality {
+  padding: 0 var(--sp-2);
+  font-size: var(--fs-body);
+  line-height: var(--lh-caption);
+  background: var(--surface-card);
+  color: var(--text-body);
+  border: var(--border-input);
+}
+.btn-quality:hover:not(:disabled) { background: var(--surface-tint-violet); }
+.btn-quality:disabled { opacity: 0.45; cursor: not-allowed; }
+.quality-status { font-size: var(--fs-caption); color: var(--danger); }
+.quality-status:empty { display: none; }
+
+.quality-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + var(--sp-1));
+  z-index: 5;
+  min-width: 12ch;
+  max-width: min(32ch, 90vw);
+  padding: var(--sp-1);
+  background: var(--surface-raised);
+  border: var(--hairline);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-md);
+  font-family: var(--font-text);
+  cursor: default;
+}
+.quality-menu[hidden], .quality-menu [hidden] { display: none; }
+.view-header .quality-menu { top: calc(100% + var(--sp-1)); bottom: auto; }
+.quality-option {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-1) var(--sp-2);
+  background: none;
+  border: 0;
+  border-radius: var(--r-xs);
+  font: inherit;
+  font-size: var(--fs-small);
+  color: var(--text-body);
+  text-align: left;
+  cursor: pointer;
+}
+/* The check is drawn with a border box, never text, so it stays out of the item's name. */
+.quality-option::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: var(--r-pill); border: 1px solid var(--border-strong); }
+.quality-option[aria-checked="true"] { font-weight: var(--fw-bold); }
+.quality-option[aria-checked="true"]::before { background: var(--jade); border-color: var(--jade); }
+.quality-option:hover, .quality-option:focus-visible { outline: none; background: var(--surface-tint-violet); }
+.quality-confirm { display: grid; gap: var(--sp-2); padding: var(--sp-2); }
+.quality-confirm p { margin: 0; font-size: var(--fs-small); color: var(--text-body); }
+.quality-confirm .btn { padding: var(--sp-1) var(--sp-3); }
+
+/* On a tile the bar is the dark terminal panel in both themes: terminal ink. */
+.tile .quality-label { color: var(--terminal-meta); }
+.tile .quality-notice { background: var(--terminal-sel); color: var(--terminal-warn); }
+.tile .btn-quality { background: transparent; color: var(--terminal-fg); border-color: var(--terminal-rule); font-size: var(--fs-caption); }
+.tile .btn-quality:hover:not(:disabled) { background: var(--terminal-sel); }
+.tile .quality-status { color: var(--terminal-stop); }
+
+/* -- Disk indicator ------------------------------------------------------------ */
+
+/* Free space for the captures folder, in the masthead. A thin bar shows the
+   share in use; low space is a saffron warning; refusal and the low-disk
+   cutoff are error states (wine, with a STOP label), as the design system
+   allows wine only for errors. */
+.masthead { flex-wrap: wrap; }
+.disk { margin-left: auto; display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); }
+.disk[hidden] { display: none; }
+.disk:not([hidden]) + .log-out { margin-left: 0; }
+.disk-text { font-family: var(--font-mono); font-size: var(--fs-caption); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.disk-bar { width: 96px; height: 6px; border-radius: var(--r-pill); background: var(--gray-100); overflow: hidden; }
+.disk-bar > span { display: block; height: 100%; background: var(--jade); transition: width var(--motion-fast); }
+.disk-alert { margin: 0; font-size: var(--fs-caption); font-weight: var(--fw-medium); }
+.disk-alert:empty { display: none; }
+.disk[data-level="warn"] .disk-bar > span { background: var(--warning); }
+.disk[data-level="warn"] .disk-alert {
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--warning) 18%, transparent);
+  color: var(--warning-text);
+}
+.disk[data-level="refuse"] .disk-bar > span,
+.disk[data-level="finalize"] .disk-bar > span { background: var(--danger); }
+.disk[data-level="refuse"] .disk-alert,
+.disk[data-level="finalize"] .disk-alert {
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+.disk[data-level="refuse"] .disk-alert::before,
+.disk[data-level="finalize"] .disk-alert::before {
+  content: "STOP  ";
+  font-family: var(--font-mono);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-badge);
+}
+
+/* Why a Recording did not start (the server's message), next to its button. */
+.record-status { font-size: var(--fs-caption); color: var(--danger); }
+.record-status:empty { display: none; }
+.tile .record-status { color: var(--terminal-stop); }
+
+
+/* -- Captures --------------------------------------------------------------------- */
+
+/* The list scrolls on its own, so a long session's Captures never push the
+   Device forms out of reach. */
+.capture-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.capture {
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-raised);
+  border: var(--hairline);
+  border-radius: var(--r-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+/* The head line: the file name, and Delete where a Device's Remove sits. */
+.capture-head { display: flex; align-items: flex-start; gap: var(--sp-2); }
+.capture-name { flex: 1; min-width: 0; padding-top: 2px; font-family: var(--font-mono); font-size: var(--fs-caption); font-weight: var(--fw-medium); word-break: break-all; }
+.capture-delete { flex: none; display: inline-flex; align-items: center; padding: 0 var(--sp-2); font-size: var(--fs-caption); line-height: var(--lh-small); }
+.icon { display: block; width: 16px; height: 16px; margin-block: 2.5px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.capture-flags { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.capture-actions { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.capture-actions .btn { padding: 0 var(--sp-2); font-size: var(--fs-caption); text-decoration: none; }
+
+.badge-capture[data-state="interrupted"] { background: color-mix(in srgb, var(--warning) 18%, transparent); color: var(--warning-text); }
+.badge-capture[data-state="in-progress"] { background: var(--surface-tint-violet); color: var(--text-body); }
+.badge-capture[data-state="in-progress"]::before { background: var(--jade); }
+
+/* Design-system danger button: destructive actions only. */
+.btn-danger { background: transparent; color: var(--danger); border-color: var(--danger); }
+.btn-danger:hover:not(:disabled) { background: var(--danger); color: var(--text-on-danger); }
+.btn-danger:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.capture-dialog {
+  max-width: min(960px, calc(100vw - 2 * var(--sp-4)));
+  padding: var(--sp-4);
+  border: var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--surface-card);
+  color: var(--text-body);
+  box-shadow: var(--shadow-lg);
+}
+.capture-dialog::backdrop { background: color-mix(in srgb, var(--terminal-bg) 70%, transparent); }
+.capture-dialog-header { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-3); }
+.capture-dialog-title { font-size: var(--fs-body); line-height: var(--lh-body); word-break: break-all; }
+.capture-preview-stage { background: var(--terminal-bg); border-radius: var(--r-sm); display: grid; place-items: center; }
+.capture-preview-stage video, .capture-preview-stage img { display: block; max-width: 100%; max-height: 75vh; }
+
+.capture-confirm { max-width: min(480px, calc(100vw - 2 * var(--sp-4))); }
+.capture-confirm-body { margin: var(--sp-3) 0; }
+.capture-dialog-actions { display: flex; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-3); }
+/* -- Stall overlay (stall.js) ----------------------------------------------------
+   The picture froze in this browser while the Relay says Live. It sits on the
+   dark video surface in both themes, so it takes terminal ink: a saffron
+   label over a dimmed frame, never a Feed Status color. */
+
+.stall {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-2);
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  color: var(--terminal-fg);
+  background: color-mix(in srgb, var(--terminal-bg) 55%, transparent);
+  pointer-events: none;
+}
+.stall[hidden] { display: none; }
+.stall-label {
+  color: var(--terminal-warn);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-badge);
+}
+.tile .stall-why { display: none; } /* too long for a 3×3 tile; the overlay's title carries it */
+
+/* -- Full Screen (full-screen.js) -------------------------------------------------
+   One Feed over the whole window, in terminal ink in both themes like the video
+   surface it frames. A tile's, stage's or Map Preview's screen moves into the frame and
+   drops its framed look; the header lies over the top of the picture, inside
+   the safe areas (viewport-fit=cover), and fades when full-screen.js hides it.
+   The page keeps its own left and right safe areas, as it had before cover. */
+
+body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+html:has(.full-screen[open]) { overflow: hidden; }
+
+.full-screen-open, .full-screen-exit {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--terminal-bg) 60%, transparent);
+  color: var(--terminal-fg);
+  cursor: pointer;
+}
+.full-screen-open:hover, .full-screen-exit:hover { background: var(--terminal-bg); }
+.full-screen-open:focus-visible, .full-screen-exit:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.full-screen-open { position: absolute; top: var(--sp-1); right: var(--sp-1); z-index: 1; }
+
+.full-screen {
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  background: var(--terminal-bg);
+  color: var(--terminal-fg);
+}
+.full-screen::backdrop { background: var(--terminal-bg); }
+.full-screen-frame { position: absolute; inset: 0; background: var(--terminal-bg); }
+.full-screen .stage, .full-screen .tile-screen { position: absolute; inset: 0; aspect-ratio: auto; border-radius: 0; }
+.full-screen .tile-screen::before { content: none; }
+/* Out of its tile, a tile's video loses `.tile video`: letterbox every video here alike. */
+.full-screen video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; background: var(--terminal-bg); }
+.full-screen .full-screen-open { display: none; }
+
+.full-screen-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
+  padding: calc(var(--sp-2) + env(safe-area-inset-top)) calc(var(--sp-2) + env(safe-area-inset-right)) var(--sp-4) calc(var(--sp-3) + env(safe-area-inset-left));
+  background: linear-gradient(color-mix(in srgb, var(--terminal-bg) 85%, transparent), transparent);
+}
+.full-screen[data-chrome="hidden"] .full-screen-header { opacity: 0; pointer-events: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .full-screen-header { transition: opacity var(--motion-fast); }
+}
+.full-screen-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--terminal-fg);
+}
+.full-screen-exit { margin-left: auto; }
+
+/* -- Device setup guide (setup.html, setup.js; #100) ---------------------------------
+   One prose column. The variant switch wears the View switch's joined buttons; shell
+   blocks are design-system code blocks with a jade prompt that copying leaves behind. */
+.guide {
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: var(--sp-5) var(--sp-4) var(--sp-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+}
+.guide p { margin: 0; }
+.guide a:not(.btn) { color: var(--text-link); }
+.guide a:not(.btn):hover { color: var(--text-link-hover); }
+.guide a.btn { display: inline-block; text-decoration: none; }
+.guide > h2 { margin-top: var(--sp-4); }
+.guide-lead { color: var(--text-prose); }
+
+.variant-switch {
+  align-self: flex-start;
+  display: inline-flex;
+  max-width: 100%;
+  border: var(--border-input);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+.variant-switch-option {
+  padding: var(--sp-1) var(--sp-3);
+  border: 0;
+  background: transparent;
+  color: var(--text-body);
+  font: inherit;
+  font-size: var(--fs-small);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+}
+.variant-switch-option + .variant-switch-option { border-left: var(--border-input); }
+.variant-switch-option:hover { background: var(--surface-tint-violet); }
+.variant-switch-option[aria-pressed="true"] { background: var(--action-primary); color: var(--text-on-action); font-weight: var(--fw-bold); }
+.variant-switch-option:focus-visible { outline: none; box-shadow: inset var(--focus-ring); }
+
+.guide-steps { margin: 0; padding-left: var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-5); }
+.guide-steps > li { padding-left: var(--sp-2); }
+.guide-steps > li::marker { color: var(--jade-text); font-family: var(--font-mono); font-weight: var(--fw-bold); }
+.guide-steps > li > * + *, .guide-steps > li > div > * + *, .guide-more > * + * { margin-top: var(--sp-3); }
+
+.guide-shell {
+  margin: 0;
+  padding: var(--sp-3) var(--sp-4);
+  overflow-x: auto;
+  background: var(--terminal-bg);
+  border-left: var(--stripe) solid var(--jade);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  font-size: var(--fs-small);
+  line-height: var(--lh-small);
+}
+.guide-shell code { padding: 0; background: none; color: var(--terminal-fg); font-size: inherit; }
+.guide-shell code::before { content: "$ "; color: var(--jade); user-select: none; }
+/* What a command prints, as opposed to what you type: no prompt, coloured as
+   gen-cert.sh colours it, and the placeholders for your own values set apart. */
+.guide-output samp { font-family: var(--font-mono); color: var(--terminal-fg); }
+.guide-output .out-pass { color: var(--terminal-pass); font-weight: var(--fw-bold); }
+.guide-output .out-info { color: var(--terminal-info); }
+.guide-output var { font-style: normal; color: var(--terminal-str); }
+
+.callout {
+  padding: var(--sp-3) var(--sp-4);
+  border-left: var(--stripe) solid var(--warning);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  background: color-mix(in srgb, var(--warning) 18%, transparent);
+  color: var(--text-body);
+}
+.callout::before {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-badge);
+}
+.callout strong { display: block; color: var(--text-heading); }
+.callout-warn::before { content: "WARN"; color: var(--warning-text); }
+.callout-stop { border-left-color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.callout-stop::before { content: "STOP"; color: var(--danger); }
+
+.guide-more { border: var(--border-input); border-radius: var(--r-sm); padding: var(--sp-3) var(--sp-4); }
+.guide-more summary { cursor: pointer; font-weight: var(--fw-bold); color: var(--text-heading); border-radius: var(--r-xs); }
+.guide-more summary:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+.guide-table { overflow-x: auto; }
+.guide-table table { width: 100%; border-collapse: collapse; font-size: var(--fs-small); line-height: var(--lh-small); }
+.guide-table th, .guide-table td { padding: var(--sp-2) var(--sp-3); text-align: left; vertical-align: top; border-bottom: var(--hairline); }
+.guide-table th { color: var(--text-heading); font-weight: var(--fw-bold); border-bottom: var(--rule); }
+.guide-foot { margin-top: var(--sp-4); }
+
+/* On a phone the switch fills the width in three equal parts, wrapping its words, and each
+   troubleshooting row stacks into a card that labels its own cells. */
+@media (max-width: 560px) {
+  .variant-switch { align-self: stretch; }
+  .variant-switch-option { flex: 1 1 0; padding: var(--sp-2) var(--sp-1); }
+  .guide-table thead { display: none; }
+  .guide-table tr { display: block; padding: var(--sp-2) 0; border-bottom: var(--hairline); }
+  .guide-table td { display: block; padding: var(--sp-1) 0; border: 0; }
+  .guide-table td:first-child { font-weight: var(--fw-bold); color: var(--text-heading); }
+  .guide-table td[data-label]::before {
+    content: attr(data-label) " ";
+    font-family: var(--font-mono);
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-bold);
+    color: var(--jade-text);
+  }
+}

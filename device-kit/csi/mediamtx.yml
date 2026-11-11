@@ -1,0 +1,78 @@
+# Device Kit — Raspberry Pi CSI camera Device (MediaMTX 1.21.2)
+#
+# Publishes one Camera, `csi`, straight from MediaMTX's rpiCamera source: no
+# ffmpeg, and no publisher user, since the source lives inside MediaMTX.
+# Hardened like every kit Device:
+#   - authentication on; only the instance user may read or use the API
+#   - RTSPS only (`rtspEncryption: strict`), TCP transport
+#   - the API served over HTTPS with the kit-generated self-signed certificate
+#   - every other server (RTMP, HLS, WebRTC, SRT, MoQ, playback) switched off
+#
+# The instance user's name and password are not in this file. compose.yaml
+# injects them from `.env` as MTX_AUTHINTERNALUSERS_1_USER / _PASS, which
+# override the placeholders on the second user below.
+
+logLevel: info
+logDestinations: [stdout]
+
+authMethod: internal
+authInternalUsers:
+  # Unused here (nothing publishes; the camera is a source inside MediaMTX).
+  # Kept so the instance user is the second entry, as in every kit variant.
+  - user: any
+    pass:
+    ips: ["127.0.0.1", "::1"]
+    permissions: []
+
+  # The instance user: the Camera Viewer instance pulls Cameras and discovers
+  # them through the API. Overridden from the environment; see header.
+  - user: instance-user-from-env
+    pass: instance-pass-from-env
+    ips: []
+    permissions:
+      - action: read
+      - action: api
+
+api: true
+apiAddress: :9997
+apiEncryption: true
+apiServerKey: /certs/server.key
+apiServerCert: /certs/server.crt
+
+metrics: false
+pprof: false
+playback: false
+
+rtsp: true
+rtspTransports: [tcp]
+rtspEncryption: strict
+rtspsAddress: :8322
+rtspServerKey: /certs/server.key
+rtspServerCert: /certs/server.crt
+rtspAuthMethods: [basic]
+
+rtmp: false
+hls: false
+webrtc: false
+srt: false
+moq: false
+
+paths:
+  csi:
+    # The first camera on the CSI connectors (rpiCameraCamID 0).
+    # `auto` encodes in hardware on a Pi 4 and in software (OpenH264) on a
+    # Pi 5, which has no H.264 encoder. Neither emits B-frames, which WebRTC
+    # playback requires. One keyframe a second (an IDR period equal to the
+    # fps), like the other kit variants, so a Feed starts quickly.
+    # It boots at Quality Medium (1080p, 15 fps, 1.5 Mbit/s), so a Pi that
+    # reboots onto a slow LTE uplink doesn't start at 4 Mbit/s. The instance
+    # sets the Quality through the API (ADR 0009) and puts it back after a
+    # restart: FPS, bitrate and IDR period change without dropping viewers;
+    # width, height and codec restart the camera.
+    source: rpiCamera
+    rpiCameraWidth: 1920
+    rpiCameraHeight: 1080
+    rpiCameraFPS: 15
+    rpiCameraCodec: auto
+    rpiCameraBitrate: 1500000
+    rpiCameraIDRPeriod: 15

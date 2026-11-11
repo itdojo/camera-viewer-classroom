@@ -1,0 +1,25 @@
+# Test-harness overlay for a Device started with the kit's `gps` profile.
+# Applied by tests/harness/devices.py after device-override.yaml, never by
+# hand.
+#
+# - The GPS Sidecar joins the Device's own network namespace, so another
+#   container reaches it at <label>:9998 as an instance reaches a real Device,
+#   where both share the host's address. A second container under the same
+#   DNS alias would get half the lookups instead.
+# - Its port is therefore published on the Device's container, on an
+#   ephemeral loopback port like the others.
+# - `restart: "no"`, so a test sees a Sidecar that exits stay exited.
+# - The tracks folder can be a test's own, so a test replays a track it wrote.
+
+services:
+  mediamtx:
+    ports:
+      - "127.0.0.1::9998"
+  gps:
+    network_mode: service:mediamtx
+    ports: !reset []
+    restart: "no"
+    labels:
+      io.itdojo.camera-viewer.test-session: ${CV_TEST_SESSION:?}
+    volumes:
+      - ${CV_GPS_TRACKS:?}:/gps/tracks:ro

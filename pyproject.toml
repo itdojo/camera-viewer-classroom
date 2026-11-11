@@ -1,0 +1,68 @@
+[project]
+name = "camera-viewer"
+version = "0.1.0"
+description = "Web UI that shows, records and snapshots live video from MediaMTX Devices."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "httpcore>=1.0",  # device_client pins certificates through its network backend
+    "httpx>=0.27",
+    "pydantic>=2",  # request bodies in api/; fastapi only brings it transitively
+    "starlette>=0.40",  # auth.py's ASGI middleware types; fastapi only brings it transitively
+    "uvicorn>=0.30",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "httpx>=0.27",
+    "pytest-playwright>=0.5",
+    "ruff>=0.16.10",
+    "deptry>=0.25.1",
+    "pre-commit>=4.6.2",
+    "pytest-xdist>=3.8.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend/camera_viewer"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# backend: the application package; tests: the compose-based harness package.
+pythonpath = ["backend", "tests"]
+markers = [
+    "docker: needs a Docker daemon; set by tests/conftest.py, so `-m \"not docker\"` is the fast tier",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+src = ["backend", "tests"]
+
+[tool.ruff.lint]
+# Pyflakes and the error subset of pycodestyle, plus import order, bugbear, pyupgrade and
+# ruff's own rules. No E501: there is no formatter yet, and lines run to about 120 already.
+select = ["E4", "E7", "E9", "F", "W", "I", "B", "UP", "RUF"]
+# The UI shows resolutions as 1280×720, so tests assert the multiplication sign on purpose.
+allowed-confusables = ["×"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency markers and the backend's frozen dataclasses are safe argument defaults.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "camera_viewer.feed_status.Thresholds",
+    "camera_viewer.quality_auto.AutoThresholds",
+    "camera_viewer.relay.RelayCredentials",
+]
+
+[tool.deptry]
+# Only the application package is checked: tests may import dev-group tools freely.
+known_first_party = ["camera_viewer"]
+
+[tool.deptry.per_rule_ignores]
+# The supervisor starts uvicorn as `python -m uvicorn`, so nothing imports it.
+DEP002 = ["uvicorn"]

@@ -1,0 +1,20 @@
+# TEST STAND-IN, layered after csi-stand-in.yaml (variant "csi-stand-in-held"):
+# the CSI stand-in with a camera that is not working yet, as on a Pi whose
+# ribbon is badly seated. The `csi` path is configured but its source does not
+# publish until the test creates /tmp/camera-up in the container
+# (`device.exec("touch", "/tmp/camera-up")`), so a Device can be added while
+# its source is failing and then see it recover without a restart (#36).
+#
+# The test pattern is smaller than the stand-in's 1080p15, since what is under
+# test is when the source comes up, not what it carries.
+
+services:
+  mediamtx:
+    environment:
+      MTX_PATHS_CSI_RUNONINIT: >-
+        sh -c 'until [ -e /tmp/camera-up ]; do sleep 0.5; done;
+        exec ffmpeg -hide_banner -loglevel warning -re
+        -f lavfi -i testsrc=size=640x360:rate=30
+        -c:v libx264 -preset ultrafast -tune zerolatency -bf 0
+        -pix_fmt yuv420p -g 30 -b:v 1M
+        -f rtsp -rtsp_transport tcp rtsps://127.0.0.1:8322/csi'

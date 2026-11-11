@@ -1,0 +1,72 @@
+# Device Kit — Raspberry Pi CSI camera Device
+#
+# One camera module on the Pi's CSI ribbon, published as the Camera `csi`:
+# 1920x1080 at 15 fps, H.264 at 1.5 Mbit/s with no B-frames (Quality Medium,
+# which the instance can change). Pi 4 and Pi 5,
+# 64-bit Raspberry Pi OS (Bookworm or Trixie). Connect the camera with the Pi
+# powered off, check it with `rpicam-hello --list-cameras`, then from this
+# directory:
+#
+#   ../gen-cert.sh          # once, on the Pi: certificate in ./certs, credentials
+#                           # in ./.env, camera devices in ./compose.override.yaml
+#   docker compose up -d    # start the Device
+#
+# gen-cert.sh prints the certificate fingerprint and the instance user's
+# credentials. Enter them in Camera Viewer when you add this Device.
+#
+# The Pi 4 encodes in hardware. The Pi 5 has no H.264 encoder, so MediaMTX
+# encodes in software there; check `docker stats` while a Feed plays.
+#
+# With no camera attached the Device still starts and its API answers; the
+# Camera `csi` never becomes available, and `docker compose logs` repeats
+# "[RPI Camera source] camera_create(): ..." every few seconds until one is
+# connected (power off first) and the Device restarted.
+#
+# Ports: 8322/tcp RTSPS (the Camera), 9997/tcp the MediaMTX API over HTTPS.
+# Nothing else is exposed: plain RTSP, RTMP, HLS and WebRTC are switched off,
+# which is why this runs on Docker's bridge network with two published ports
+# rather than the host network MediaMTX's own Pi recipe uses.
+
+# GPS: `docker compose --profile gps up -d` also starts the GPS Sidecar
+# (../gps/compose.yaml), which serves a GNSS receiver's fixes on 9998/tcp.
+# Without the profile it stays off.
+include:
+  - path: ../gps/compose.yaml
+    project_directory: .
+
+services:
+  mediamtx:
+    # Pinned to exactly 1.21.2, the same MediaMTX as the Camera Viewer image.
+    # The -rpi build carries the libcamera the rpiCamera source needs; it
+    # exists for arm64, armv7 and armv6 only.
+    image: bluenviron/mediamtx:1.21.2-rpi
+    restart: unless-stopped
+    environment:
+      MTX_AUTHINTERNALUSERS_1_USER: ${INSTANCE_USER:?run ../gen-cert.sh first, or set INSTANCE_USER in .env}
+      MTX_AUTHINTERNALUSERS_1_PASS: ${INSTANCE_PASS:?run ../gen-cert.sh first, or set INSTANCE_PASS in .env}
+      # Flip the picture for a camera mounted sideways or upside down: set
+      # CAMERA_HFLIP=true (mirror left to right) and/or CAMERA_VFLIP=true
+      # (top to bottom) in .env; both together turn it 180 degrees. Only
+      # true or false; anything else stops MediaMTX from starting.
+      MTX_PATHS_CSI_RPICAMERAHFLIP: ${CAMERA_HFLIP:-false}
+      MTX_PATHS_CSI_RPICAMERAVFLIP: ${CAMERA_VFLIP:-false}
+    # MediaMTX documents `privileged` for Pi cameras in Docker; this kit runs
+    # without it. libcamera opens the camera's media, video, sub-device and
+    # DMA-heap nodes, and those differ from one Pi to the next, so gen-cert.sh
+    # lists this Pi's in compose.override.yaml, which Docker Compose reads
+    # alongside this file. If `docker compose up` reports a /dev path that
+    # does not exist, re-run ../gen-cert.sh. Frames pass through executable
+    # shared memory, and cameras are enumerated through udev.
+    tmpfs:
+      - /dev/shm:exec
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+      - ${DEVICE_CERTS_DIR:-./certs}:/certs:ro
+      - /run/udev:/run/udev:ro
+    ports:
+      # Keep 8322 published as 8322: the instance always pulls a Camera from
+      # 8322 on the Device's address. API_PORT may move if 9997 is taken (add
+      # the Device as host:port). Both take 127.0.0.1:0, an ephemeral loopback
+      # port, which only the tests use.
+      - "${RTSPS_PORT:-8322}:8322"
+      - "${API_PORT:-9997}:9997"

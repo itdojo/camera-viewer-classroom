@@ -1,0 +1,59 @@
+# Device Kit — the GPS Sidecar, shared by every variant
+#
+# Optional. Each variant's compose.yaml includes this file, but the service
+# runs only under the `gps` profile, so a Device without a GNSS receiver runs
+# exactly as before. To turn it on, from the variant's directory:
+#
+#   ../gen-cert.sh                       # finds a receiver in /dev/serial/by-id
+#                                        # and saves it as GPS_TTY in ./.env
+#   docker compose --profile gps up -d   # MediaMTX plus the GPS Sidecar
+#   docker compose --profile gps down    # stop both (plain `down` leaves it running)
+#
+# The Sidecar reads NMEA (RMC, GGA, VTG) from the receiver and serves its
+# fixes over HTTPS on 9998, with the Device's certificate and the same
+# instance user as the API, so there is nothing new to generate or pin. The
+# instance always connects to it; it never connects anywhere.
+#
+# No receiver? Set GPS_SOURCE=replay:sample.nmea in .env to loop the track in
+# ../gps/tracks/ at real-time speed instead: a moving Camera with no hardware.
+# Drop your own NMEA log in that folder to replay it.
+#
+# A missing or unreadable receiver makes the Sidecar exit with a message in
+# `docker compose --profile gps logs gps`, and Docker restarts it. A GPS_TTY
+# path that does not exist at all stops `docker compose up` with that path in
+# the error: plug the receiver in, or re-run ../gen-cert.sh.
+
+services:
+  gps:
+    # The stock image and a bind-mounted, stdlib-only script: no image build
+    # and no gpsd, so it starts on a Device with no internet once the image
+    # is pulled.
+    image: python:3.13-slim
+    profiles: [gps]
+    restart: unless-stopped
+    entrypoint: ["python", "-u", "/gps/sidecar.py"]
+    environment:
+      INSTANCE_USER: ${INSTANCE_USER:?run ../gen-cert.sh first, or set INSTANCE_USER in .env}
+      INSTANCE_PASS: ${INSTANCE_PASS:?run ../gen-cert.sh first, or set INSTANCE_PASS in .env}
+      # tty (read GPS_TTY) or replay:<file in ../gps/tracks>.
+      GPS_SOURCE: ${GPS_SOURCE:-tty}
+      # The receiver's host path, told to the Sidecar only for its messages.
+      GPS_TTY: ${GPS_TTY:-}
+      # Only for a UART receiver (an LTE HAT's serial port, a GPS on the
+      # Pi's pins): its baud rate, such as 9600. USB receivers ignore it.
+      GPS_BAUD: ${GPS_BAUD:-}
+      PYTHONDONTWRITEBYTECODE: "1"
+    devices:
+      # The receiver by its stable /dev/serial/by-id/ path, never /dev/ttyACMn.
+      # /dev/null stands in when none is set, so replay needs no receiver.
+      - ${GPS_TTY:-/dev/null}:/dev/gps
+    read_only: true
+    volumes:
+      # Paths are relative to the variant's directory (the include sets it).
+      - ../gps:/gps:ro
+      - ${DEVICE_CERTS_DIR:-./certs}:/certs:ro
+    ports:
+      # Fixed, not a setting: the instance looks for the Sidecar on 9998 only
+      # (device_client.GPS_SIDECAR_PORT), so a Device publishing it elsewhere
+      # would show no Position.
+      - "9998:9998"

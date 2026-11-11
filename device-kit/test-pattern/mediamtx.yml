@@ -1,0 +1,74 @@
+# Device Kit — test-pattern Device (MediaMTX 1.21.2)
+#
+# A camera-less Device publishing one Camera, `test-pattern`: ffmpeg's
+# `testsrc` with its running seconds counter, 1280x720 at 30 fps, H.264 with
+# no B-frames. Hardened like every kit Device:
+#   - authentication on; only the instance user may read or use the API
+#   - RTSPS only (`rtspEncryption: strict`), TCP transport
+#   - the API served over HTTPS with the kit-generated self-signed certificate
+#   - every other server (RTMP, HLS, WebRTC, SRT, MoQ, playback) switched off
+#
+# The instance user's name and password are not in this file. compose.yaml
+# injects them from `.env` as MTX_AUTHINTERNALUSERS_1_USER / _PASS, which
+# override the placeholders on the second user below.
+
+logLevel: info
+logDestinations: [stdout]
+
+authMethod: internal
+authInternalUsers:
+  # The test-pattern generator inside this container publishes over loopback.
+  # Nothing outside the container can use this entry.
+  - user: any
+    pass:
+    ips: ["127.0.0.1", "::1"]
+    permissions:
+      - action: publish
+        path: test-pattern
+
+  # The instance user: the Camera Viewer instance pulls Cameras and discovers
+  # them through the API. Overridden from the environment; see header.
+  - user: instance-user-from-env
+    pass: instance-pass-from-env
+    ips: []
+    permissions:
+      - action: read
+      - action: api
+
+api: true
+apiAddress: :9997
+apiEncryption: true
+apiServerKey: /certs/server.key
+apiServerCert: /certs/server.crt
+
+metrics: false
+pprof: false
+playback: false
+
+rtsp: true
+rtspTransports: [tcp]
+rtspEncryption: strict
+rtspsAddress: :8322
+rtspServerKey: /certs/server.key
+rtspServerCert: /certs/server.crt
+rtspAuthMethods: [basic]
+
+rtmp: false
+hls: false
+webrtc: false
+srt: false
+moq: false
+
+paths:
+  test-pattern:
+    # -re paces lavfi to wall-clock time, so the counter is a running clock.
+    # ultrafast + zerolatency (and -bf 0, to be explicit) emit no B-frames,
+    # which WebRTC playback requires. ffmpeg does not verify the loopback
+    # certificate (tls_verify defaults to off), which is what we want here.
+    runOnInit: >-
+      ffmpeg -hide_banner -loglevel warning -re
+      -f lavfi -i testsrc=size=1280x720:rate=30
+      -c:v libx264 -preset ultrafast -tune zerolatency -bf 0
+      -pix_fmt yuv420p -g 30 -b:v 2M -maxrate 2M -bufsize 1M
+      -f rtsp -rtsp_transport tcp rtsps://127.0.0.1:8322/test-pattern
+    runOnInitRestart: true

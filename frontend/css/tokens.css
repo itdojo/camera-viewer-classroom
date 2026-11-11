@@ -1,0 +1,173 @@
+/* ITdojo Design System v1.2 tokens, copied verbatim from the design system's
+   itdojo-design-system.html (its :root and [data-theme="dark"] blocks).
+   Never edit values here; the source of truth is the tokens/*.css beside
+   that file. Re-copy to update. */
+
+:root {
+
+  /* ─── IT Dojo — color tokens. Violet is the ink, jade is the action. ─── */
+  /* primary */
+  --violet:#3E3566;
+  --jade:#3CB858;
+  --jade-press:#2EA049;
+  --violet-press:#2D2549;
+  /* accent — tinted light surfaces */
+  --lavender:#F1ECFA;
+  --mint:#D4F2E4;
+  /* neutral — cool gray, violet-tinted */
+  --white:#FFFFFF;
+  --gray-50:#FAFAFC;
+  --gray-100:#ECEAF2;
+  --gray-300:#BEB9CC;
+  --gray-500:#6B6582;
+  --gray-700:#2A2347;
+  --gray-900:#14102B;
+  /* semantic — state only, never branding */
+  --success:#3CB858;
+  --warning:#D89C2C;
+  --danger:#A8334A;
+  --info:#4A6FA5;
+  /* solid violet fill — only diverges from --violet in dark mode */
+  --violet-solid:var(--violet);
+  /* jade that passes contrast as text on white (links, prose) */
+  --jade-text:#1E7A37;
+  /* saffron that passes contrast as text on light surfaces (warn labels) */
+  --warning-text:#8C6014;
+  /* terminal panel — stays dark in both themes */
+  --terminal-bg:var(--gray-900);
+  --terminal-fg:var(--lavender);
+  --terminal-str:var(--mint);
+  --terminal-kw:#B69CFF;
+  --terminal-comment:var(--terminal-meta); /* the panel is dark in both themes; light gray-500 fails on it */
+  /* terminal ink — shell script STDOUT and TUIs. Literals, not theme-flipped:
+  a terminal has no light mode, so these hold their dark values always.
+  See the IT Dojo terminal design system note. */
+  --terminal-step:#BCB0E8;
+  --terminal-pass:#4ECE6A;
+  --terminal-info:#7AA0D8;
+  --terminal-warn:#E0B45A;
+  --terminal-stop:#E06B82;
+  --terminal-meta:#9A93B5;
+  --terminal-rule:#4A4170;
+  --terminal-sel:#241D3D;
+  --terminal-ok-bg:#15321F;
+
+  /* ─── IT Dojo — typography tokens. Fira Sans for prose, Fira Code for every mono surface. ─── */
+  --font-text:'Fira Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:'Fira Code', ui-monospace, 'Cascadia Code', 'Source Code Pro', Consolas, monospace;
+  --fs-display:43px;
+  --fs-h1:31px;
+  --fs-h2:23px;
+  --fs-body:18px;
+  --fs-small:16px;
+  --fs-caption:14px;
+  --lh-display:1.1; /* @kind font */
+  --lh-h1:1.2; /* @kind font */
+  --lh-h2:1.3; /* @kind font */
+  --lh-body:1.55; /* @kind font */
+  --lh-small:1.5; /* @kind font */
+  --lh-caption:1.4; /* @kind font */
+  --fw-regular:400; /* @kind font */
+  --fw-medium:500; /* @kind font */
+  --fw-bold:700; /* @kind font */
+  --ls-display:-0.02em;
+  --ls-h1:-0.01em;
+  --ls-caption:0.15em;  /* mono eyebrow / caption tracking */
+  --ls-badge:0.08em;    /* badge + callout icon tracking */
+
+  /* ─── IT Dojo — spacing (4px base) and radius. Density is a feature; radius is reserved. ─── */
+  --sp-1:4px;
+  --sp-2:8px;
+  --sp-3:12px;
+  --sp-4:16px;
+  --sp-5:24px;
+  --sp-6:32px;
+  --sp-7:48px;
+  --sp-8:64px;
+  --r-xs:2px;
+  --r-sm:4px;
+  --r-md:6px;
+  --r-lg:10px;
+  --r-pill:999px;
+  --measure:70ch;        /* max prose width */
+  --content-max:980px;   /* page column */
+
+  /* ─── IT Dojo — elevation and borders. Violet-tinted shadows on light, plain black on dark. ─── */
+  --shadow-sm:0 1px 2px rgba(62,53,102,0.08);
+  --shadow-md:0 4px 10px rgba(62,53,102,0.10);
+  --shadow-lg:0 12px 28px rgba(62,53,102,0.14);
+  --focus-ring:0 0 0 2px var(--jade-text); /* a translucent halo was 1.18:1 */
+  --hairline:1px solid var(--gray-100);
+  --rule:1px solid var(--violet);
+  --border-input:1px solid var(--gray-300);
+  --stripe:3px;          /* accent / callout left stripe */
+  --motion-fast:120ms ease; /* @kind other */
+  --motion-theme:200ms ease; /* @kind other */
+
+  /* ─── IT Dojo — semantic aliases. Prefer these in product code; the base tokens above ─── */
+  /* text */
+  --text-heading:var(--violet);
+  --text-body:var(--violet);
+  --text-prose:var(--gray-900);     /* ledes, descriptive paragraphs */
+  --text-muted:var(--gray-500);     /* labels, captions, metadata */
+  --text-on-tint:var(--gray-700);
+  --text-on-action:#14102B;         /* dark ink on jade: white on #3CB858 is 2.56:1 */
+  --text-on-solid:#FFFFFF;          /* white on violet fills, both themes */
+  --text-on-danger:#FFFFFF;         /* white on wine (6.49:1) */
+  --text-link:var(--jade-text);
+  --text-link-hover:var(--violet);
+  /* surfaces */
+  --surface-page:var(--white);
+  --surface-raised:var(--gray-50);
+  --surface-card:var(--white);
+  --surface-tint-violet:var(--lavender);
+  --surface-tint-jade:var(--mint);
+  --surface-terminal:var(--terminal-bg);
+  /* lines */
+  --border-subtle:var(--gray-100);
+  --border-strong:var(--gray-300);
+  --border-rule:var(--violet);
+  /* action */
+  --action-primary:var(--jade);
+  --action-primary-hover:var(--jade-press);
+  --action-secondary:var(--violet-solid);
+  --action-secondary-hover:var(--violet-press);
+  --action-destructive:var(--danger);
+}
+
+[data-theme="dark"] {
+
+  /* colors.css */
+  --violet:#BCB0E8;
+  --violet-solid:#4A3F7A;
+  --violet-press:#5A4F90;
+  --jade:#4ECE6A;
+  --jade-press:#3CB858;
+  --jade-text:#4ECE6A;
+  --warning-text:#E0B45A;
+  --lavender:#241D3D;
+  --mint:#15321F;
+  --white:#0F0B1E;
+  --gray-50:#16112C;
+  --gray-100:#2A2347;
+  --gray-300:#4A4170;
+  --gray-500:#9A93B5;
+  --gray-700:#C9C3DD;
+  --gray-900:#DAD5EC;
+  --success:#4ECE6A;
+  --warning:#E0B45A;
+  --danger:#E06B82;
+  --info:#7AA0D8;
+  --terminal-bg:#08060F;
+  --terminal-fg:#E4DEF5;
+  --terminal-str:#86E6B0;
+
+  /* elevation.css */
+  --shadow-sm:0 1px 2px rgba(0,0,0,0.40);
+  --shadow-md:0 4px 10px rgba(0,0,0,0.50);
+  --shadow-lg:0 12px 28px rgba(0,0,0,0.60);
+
+  /* semantic.css */
+  --text-on-action:#0F0B1E;         /* dark text on the brightened jade */
+  --text-on-danger:#0F0B1E;         /* white on the lightened #E06B82 is 3.18:1 */
+}
